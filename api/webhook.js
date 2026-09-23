@@ -100,7 +100,7 @@ const pickers = {
       const key = `${c.symbol}-${c.type}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const tag = c.type === "crypto" ? "🪙" : "💵";
+      const tag = c.type !== "fiat" ? "🪙" : "💵";
       deduped.push({ label: `${tag} ${c.symbol} — ${c.name}`, value: c.id, _type: c.type });
     }
     return deduped;
@@ -255,7 +255,7 @@ async function handleConvo(chatId, text) {
       pickedChoice = convo._choices[idx];
       value = pickedChoice.value;
       // Store extra metadata from choice (e.g. currency type)
-      if (pickedChoice._type) convo.data._isCrypto = pickedChoice._type === "crypto";
+      if (pickedChoice._type) convo.data._isCrypto = pickedChoice._type !== "fiat";
     }
   }
   convo._choices = null;
@@ -270,10 +270,9 @@ async function handleConvo(chatId, text) {
   // Skip steps whose condition returns false
   while (convo.current < convo.steps.length) {
     const next = convo.steps[convo.current];
-    if (next.skipIf) {
-      const skip = next.skipIf(convo.data);
-      console.log(`Step ${convo.current} (${next.key}): skipIf=${skip}, _isCrypto=${convo.data._isCrypto}`);
-      if (skip) { convo.current++; continue; }
+    if (next.skipIf && next.skipIf(convo.data)) {
+      convo.current++;
+      continue;
     }
     await showStepPrompt(chatId, next, convo.data);
     return true;
@@ -906,7 +905,7 @@ async function handle(chatId, text) {
               const key = `${c.symbol}-${c.type}`;
               if (seen.has(key)) continue;
               seen.add(key);
-              const tag = c.type === "crypto" ? "🪙" : "💵";
+              const tag = c.type !== "fiat" ? "🪙" : "💵";
               deduped.push({ label: `${tag} ${c.symbol} — ${c.name}`, value: c.id, _type: c.type });
             }
             return deduped;
