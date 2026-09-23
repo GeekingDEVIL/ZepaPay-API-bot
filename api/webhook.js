@@ -286,7 +286,12 @@ async function handleConvo(chatId, text) {
     const lastStep = convo.steps[convo.steps.length - 1];
     const result = await lastStep.execute(s, convo.data);
     if (!result.success) {
-      await send(chatId, `❌ <b>${result.error?.code}</b>\n${result.error?.userMessage || result.error?.message}`);
+      let errMsg = `❌ <b>${result.error?.code || "ERROR"}</b>\n${result.error?.userMessage || result.error?.message || "Unknown error"}`;
+      const extra = { ...result.error };
+      delete extra.code; delete extra.userMessage; delete extra.message;
+      if (Object.keys(extra).length > 0) errMsg += `\n\n<b>Details:</b>\n<code>${JSON.stringify(extra, null, 2).slice(0, 2000)}</code>`;
+      errMsg += `\n\n<b>Sent:</b>\n<code>${JSON.stringify(convo.data, null, 2).slice(0, 1500)}</code>`;
+      await send(chatId, errMsg);
     } else {
       await send(chatId, `✅ <b>Success</b>\n\n${fmt(result.data)}`);
     }
@@ -929,7 +934,7 @@ async function handle(chatId, text) {
           execute: (s, d) => {
             const body = {};
             if (d.customerId !== "skip") body.customerId = d.customerId;
-            if (d.amount !== "skip") body.amount = d.amount;
+            if (d.amount !== "skip") body.amount = parseFloat(d.amount);
             if (d.currencyId !== "skip") body.currencyId = d.currencyId;
             if (d.documentType !== "skip") body.documentType = d.documentType;
             if (d.networkId !== "skip") body.networkId = d.networkId;
@@ -1026,7 +1031,7 @@ async function handle(chatId, text) {
         { key: "documentType", prompt: "📄 <b>Document type:</b>", picker: pickers.docType,
           execute: (s, d) => {
             const body = { beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId, currencyId: d.currencyId };
-            if (d.amount !== "skip") body.amount = d.amount;
+            if (d.amount !== "skip") body.amount = parseFloat(d.amount);
             if (d.documentType !== "skip") body.documentType = d.documentType;
             return api("POST", `/projects/${s.projectId}/deposit-requests`, s.apiKey, body);
           } },
