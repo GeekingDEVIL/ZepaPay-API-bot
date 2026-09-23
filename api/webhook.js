@@ -34,20 +34,13 @@ async function api(method, path, apiKey, body) {
       query[decodeURIComponent(k)] = decodeURIComponent(v);
     }
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 25000);
-  try {
-    const res = await fetch(PROXY, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ method: method.toUpperCase(), path: pathPart, query, body: body || null, apiKey }),
-      signal: controller.signal,
-    });
-    const envelope = await res.json();
-    return envelope.body || envelope;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const res = await fetch(PROXY, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ method: method.toUpperCase(), path: pathPart, query, body: body || null, apiKey }),
+  });
+  const envelope = await res.json();
+  return envelope.body || envelope;
 }
 
 // ── Formatters ───────────────────────────────────────────────────────────────
