@@ -516,7 +516,7 @@ async function handle(chatId, text) {
     // ── Exchange ─────────────────────────────────────────────────────────────
     case "/quote_exchange":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "fromCurrencyId", prompt: "💱 <b>From currency:</b>", picker: pickers.currencies },
         { key: "toCurrencyId", prompt: "💱 <b>To currency:</b>", picker: pickers.currencies },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (e.g. 100.50):",
@@ -526,7 +526,7 @@ async function handle(chatId, text) {
 
     case "/execute_exchange":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "fromCurrencyId", prompt: "⚠️ <b>This moves real funds!</b>\n\n💱 <b>From currency:</b>", picker: pickers.currencies },
         { key: "toCurrencyId", prompt: "💱 <b>To currency:</b>", picker: pickers.currencies },
         { key: "amount", prompt: "💰 Enter <b>amount</b>:" },
@@ -539,7 +539,7 @@ async function handle(chatId, text) {
     // ── Settlements ──────────────────────────────────────────────────────────
     case "/quote_settlement":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix with 'gross:' for grossAmount</i>",
           execute: (s, d) => {
@@ -551,7 +551,7 @@ async function handle(chatId, text) {
 
     case "/create_settlement":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "bankAccountId", prompt: "⚠️ <b>Moves real funds!</b>\n\n🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>" },
         { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):" },
@@ -590,7 +590,7 @@ async function handle(chatId, text) {
 
     case "/edit_settlement":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "id", prompt: "📋 <b>Select settlement to edit:</b>", picker: pickers.settlements },
         { key: "body", prompt: "Send fields as JSON:\n<code>{\"remarks\": \"...\"}</code>",
           validate: t => parseJson(t) ? null : "Invalid JSON", transform: t => parseJson(t),
@@ -609,7 +609,7 @@ async function handle(chatId, text) {
     // ── Customers ────────────────────────────────────────────────────────────
     case "/create_customer":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "name", prompt: "Enter customer <b>name</b>:" },
         { key: "email", prompt: "Enter customer <b>email</b>:" },
         { key: "description", prompt: "Enter <b>description</b> (or 'skip'):",
@@ -637,7 +637,7 @@ async function handle(chatId, text) {
     // ── Beneficiaries ────────────────────────────────────────────────────────
     case "/create_beneficiary":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "type", prompt: "👤 <b>Beneficiary type:</b>", picker: pickers.benType },
         { key: "nickname", prompt: "📝 Enter a <b>nickname</b> for this beneficiary:" },
         { key: "extra", prompt: d => d.type === "b2b" ? "🏢 Enter <b>business name</b>:" : "👤 Enter <b>first name</b> and <b>last name</b>:",
@@ -674,7 +674,7 @@ async function handle(chatId, text) {
 
     case "/attach_bank":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "alias", prompt: "📝 Enter an <b>alias</b> for this bank account:" },
         { key: "currencyCode", prompt: "💱 Enter <b>currency code</b> (e.g. inr_fiat, usd_fiat):" },
@@ -709,7 +709,7 @@ async function handle(chatId, text) {
 
     case "/attach_crypto":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "networkCode", prompt: "🌐 <b>Select network:</b>",
           picker: async (s) => {
@@ -764,7 +764,7 @@ async function handle(chatId, text) {
     // ── Payouts ──────────────────────────────────────────────────────────────
     case "/quote_payout":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>",
           execute: (s, d) => {
@@ -776,7 +776,7 @@ async function handle(chatId, text) {
 
     case "/create_payout":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "beneficiaryId", prompt: "⚠️ <b>Moves real funds!</b>\n\n👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
@@ -815,7 +815,7 @@ async function handle(chatId, text) {
 
     case "/edit_payout":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "id", prompt: "💸 <b>Select payout to edit:</b>", picker: pickers.payouts },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
@@ -857,7 +857,7 @@ async function handle(chatId, text) {
     // ── Payment Links ────────────────────────────────────────────────────────
     case "/create_pl":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "customerId",
           prompt: "👤 <b>Select a customer</b> (or 'skip'):",
           picker: async (s) => {
@@ -933,7 +933,7 @@ async function handle(chatId, text) {
 
     case "/edit_pl":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "id", prompt: "🔗 <b>Select payment link to edit:</b>", picker: pickers.paymentLinks },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
@@ -988,7 +988,7 @@ async function handle(chatId, text) {
     // ── Deposit Requests ─────────────────────────────────────────────────────
     case "/create_dr":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
         { key: "currencyId", prompt: "💱 <b>Select currency:</b>", picker: pickers.currencies },
@@ -1027,7 +1027,7 @@ async function handle(chatId, text) {
 
     case "/edit_dr":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "id", prompt: "📥 <b>Select deposit request to edit:</b>", picker: pickers.depositRequests },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
@@ -1046,7 +1046,7 @@ async function handle(chatId, text) {
     case "/signal_dr":
       if (await needsAuth(chatId)) return;
       if (!arg) return send(chatId, "Usage: /signal_dr &lt;depositRequestId&gt;");
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "body", prompt: "Send signal body as JSON or 'empty':",
           transform: t => t === "empty" ? {} : parseJson(t) || {},
           execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${arg}/expected`, s.apiKey, d.body) },
@@ -1072,7 +1072,7 @@ async function handle(chatId, text) {
 
     case "/send_email":
       if (await needsAuth(chatId)) return;
-      return startConvo(chatId, [
+      return await startConvo(chatId, [
         { key: "emailType", prompt: "📧 <b>Select email type:</b>", picker: pickers.emailTypes },
         { key: "resourceId", prompt: "🔗 Enter <b>resource ID</b> (the entity this email is about):" },
         { key: "to", prompt: "📨 Enter <b>recipient emails</b> (comma separated, or 'skip'):",
