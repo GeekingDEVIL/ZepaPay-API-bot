@@ -205,22 +205,24 @@ const pickers = {
 
 async function showStepPrompt(chatId, step, data) {
   const s = sess(chatId);
-  // If step has a picker function, fetch choices and show numbered list
   if (step.picker && s) {
     try {
+      await send(chatId, "⏳ Loading options...");
       const choices = await step.picker(s, data);
       if (choices && choices.length > 0) {
         const convo = conversations.get(chatId);
         if (convo) convo._choices = choices;
-        let list = choices.map((c, i) => `  <b>${i + 1}.</b> ${c.label}`).join("\n");
+        const list = choices.map((c, i) => `  <b>${i + 1}.</b> ${c.label}`).join("\n");
         const header = typeof step.prompt === "function" ? step.prompt(data) : step.prompt;
-        send(chatId, `${header}\n\n${list}\n\n<i>Reply with a number to select, or type a value directly.</i>`);
+        await send(chatId, `${header}\n\n${list}\n\n<i>Reply with a number, or type a value directly.</i>`);
         return;
       }
-    } catch (e) { /* fall through to plain prompt */ }
+    } catch (e) {
+      console.error("Picker error:", e.message);
+    }
   }
   const prompt = typeof step.prompt === "function" ? step.prompt(data) : step.prompt;
-  send(chatId, prompt);
+  await send(chatId, prompt);
 }
 
 async function startConvo(chatId, steps) {
@@ -246,7 +248,7 @@ async function handleConvo(chatId, text) {
 
   if (step.validate) {
     const err = step.validate(value);
-    if (err) { send(chatId, `⚠️ ${err}`); return true; }
+    if (err) { await send(chatId, `⚠️ ${err}`); return true; }
   }
   convo.data[step.key] = step.transform ? step.transform(value) : value;
   convo.current++;
@@ -258,19 +260,19 @@ async function handleConvo(chatId, text) {
 
   conversations.delete(chatId);
   const s = sess(chatId);
-  if (!s) { send(chatId, "⚠️ Session expired. /start again."); return true; }
+  if (!s) { await send(chatId, "⚠️ Session expired. /start again."); return true; }
 
   try {
-    send(chatId, "⏳ Sending request...");
+    await send(chatId, "⏳ Sending request...");
     const lastStep = convo.steps[convo.steps.length - 1];
     const result = await lastStep.execute(s, convo.data);
     if (!result.success) {
-      send(chatId, `❌ <b>${result.error?.code}</b>\n${result.error?.userMessage || result.error?.message}`);
+      await send(chatId, `❌ <b>${result.error?.code}</b>\n${result.error?.userMessage || result.error?.message}`);
     } else {
-      send(chatId, `✅ <b>Success</b>\n\n${fmt(result.data)}`);
+      await send(chatId, `✅ <b>Success</b>\n\n${fmt(result.data)}`);
     }
   } catch (e) {
-    send(chatId, `❌ ${e.message}`);
+    await send(chatId, `❌ ${e.message}`);
   }
   return true;
 }
@@ -282,24 +284,24 @@ async function handle(chatId, text) {
 
   // Key capture
   if (text.startsWith("sbk_")) {
-    send(chatId, "⏳ Validating key...");
+    await send(chatId, "⏳ Validating key...");
     try {
       const data = await api("GET", "/developer/me", text);
       if (!data.success) {
-        return send(chatId, `❌ <b>${data.error?.code}</b>\n${data.error?.userMessage || data.error?.message || "Invalid key"}`);
+        return await send(chatId, `❌ <b>${data.error?.code}</b>\n${data.error?.userMessage || data.error?.message || "Invalid key"}`);
       }
       sessions.set(chatId, { apiKey: text, projectId: data.data.projectId });
       const scopes = (data.data.scopes || []).join(", ");
-      return send(chatId, `✅ <b>Connected!</b>\n\n<b>Project:</b> <code>${data.data.projectId}</code>\n<b>Key ID:</b> <code>${data.data.keyId}</code>\n<b>Scopes:</b> ${scopes}\n\nType /help to see all commands.`);
+      return await send(chatId, `✅ <b>Connected!</b>\n\n<b>Project:</b> <code>${data.data.projectId}</code>\n<b>Key ID:</b> <code>${data.data.keyId}</code>\n<b>Scopes:</b> ${scopes}\n\nType /help to see all commands.`);
     } catch (e) {
-      return send(chatId, `❌ Connection failed: ${e.message}`);
+      return await send(chatId, `❌ Connection failed: ${e.message}`);
     }
   }
 
   // Cancel conversation
   if (text === "/cancel") {
     conversations.delete(chatId);
-    return send(chatId, "🚫 Cancelled.");
+    return await send(chatId, "🚫 Cancelled.");
   }
 
   // Active conversation
