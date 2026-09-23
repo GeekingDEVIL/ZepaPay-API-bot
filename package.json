@@ -1,0 +1,14 @@
+{
+  "name": "zepapay-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot to test ZepaPay API endpoints",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "set-webhook": "node scripts/set-webhook.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "dotenv": "^16.4.5"
+  }
+}
