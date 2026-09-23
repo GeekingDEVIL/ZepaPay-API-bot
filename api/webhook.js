@@ -63,6 +63,7 @@ function fmt(obj, depth = 0) {
   return Object.entries(obj)
     .map(([k, v]) => {
       if (typeof v === "object" && v !== null) return `${indent}<b>${k}:</b>\n${fmt(v, depth + 1)}`;
+      if (typeof v === "string" && /^https?:\/\//.test(v)) return `${indent}<b>${k}:</b> <a href="${v}">${v}</a>`;
       return `${indent}<b>${k}:</b> <code>${v}</code>`;
     })
     .join("\n");
