@@ -153,100 +153,101 @@ bot.on("message", async (msg) => {
 
 // ── /help ────────────────────────────────────────────────────────────────────
 
-bot.onText(/\/help/, (msg) => {
-  reply(
-    msg.chat.id,
-    `📖 <b>ZepaPay Bot Commands</b>
+bot.onText(/\/help/, async (msg) => {
+  const chatId = msg.chat.id;
+  const sections = [
+    `🔑 <b>ZepaPay API Tester</b>\n\n<i>Test every ZepaPay endpoint right from Telegram.\nCommands marked ⚡ are interactive — the bot will walk you through each field.</i>`,
 
-<b>── Session ──</b>
-/start — Connect with API key
-/setkey — Change API key
-/logout — Clear session
-/me — Identify current key
+    `🔐 <b>SESSION</b>\n` +
+    `/start · /setkey — Connect with API key\n` +
+    `/me — Current key info\n` +
+    `/logout — Clear session`,
 
-<b>── Reference ──</b>
-/currencies — List currencies
-/currency &lt;id&gt; — Get a currency
-/networks — List networks
-/network &lt;id&gt; — Get a network
-/countries — List bank-field countries
-/bankfields &lt;country_code&gt; — Country bank fields
-/iban &lt;iban_string&gt; — Validate IBAN
+    `📚 <b>REFERENCE DATA</b>\n` +
+    `/currencies — List all currencies\n` +
+    `/currency <code>&lt;id&gt;</code> — Currency details\n` +
+    `/networks — List all networks\n` +
+    `/network <code>&lt;id&gt;</code> — Network details\n` +
+    `/countries — Bank-field countries\n` +
+    `/bankfields <code>&lt;CC&gt;</code> — Fields for country\n` +
+    `/iban <code>&lt;iban&gt;</code> — Validate IBAN`,
 
-<b>── Balances ──</b>
-/balances — Project balances
+    `💰 <b>BALANCES &amp; EXCHANGE</b>\n` +
+    `/balances — All project balances\n` +
+    `/quote_exchange ⚡ — Get exchange quote\n` +
+    `/execute_exchange ⚡ — Execute exchange`,
 
-<b>── Exchange ──</b>
-/quote_exchange — Quote (interactive)
-/execute_exchange — Execute (interactive)
+    `🏦 <b>SETTLEMENTS</b>\n` +
+    `/quote_settlement ⚡ — Get quote\n` +
+    `/create_settlement ⚡ — Create new\n` +
+    `/settlements — List all\n` +
+    `/settlement <code>&lt;id&gt;</code> — Get details\n` +
+    `/edit_settlement ⚡ — Modify\n` +
+    `/cancel_settlement <code>&lt;id&gt;</code> — Cancel`,
 
-<b>── Settlements ──</b>
-/quote_settlement — Quote (interactive)
-/create_settlement — Create (interactive)
-/settlements — List settlements
-/settlement &lt;id&gt; — Get a settlement
-/edit_settlement — Edit (interactive)
-/cancel_settlement &lt;id&gt; — Cancel
+    `👥 <b>CUSTOMERS</b>\n` +
+    `/create_customer ⚡ — Create new\n` +
+    `/customers — List all`,
 
-<b>── Customers ──</b>
-/create_customer — Create (interactive)
-/customers — List customers
+    `👤 <b>BENEFICIARIES</b>\n` +
+    `/create_beneficiary ⚡ — Create new\n` +
+    `/beneficiaries — List all\n` +
+    `/beneficiary <code>&lt;id&gt;</code> — Get details\n` +
+    `/attach_bank ⚡ — Add bank account\n` +
+    `/ben_banks <code>&lt;id&gt;</code> — List banks\n` +
+    `/ben_bank <code>&lt;benId&gt; &lt;bankId&gt;</code> — Bank details\n` +
+    `/attach_crypto ⚡ — Add wallet\n` +
+    `/ben_wallets <code>&lt;id&gt;</code> — List wallets\n` +
+    `/ben_wallet <code>&lt;benId&gt; &lt;walletId&gt;</code> — Wallet details`,
 
-<b>── Beneficiaries ──</b>
-/create_beneficiary — Create (interactive)
-/beneficiaries — List beneficiaries
-/beneficiary &lt;id&gt; — Get a beneficiary
-/attach_bank — Attach bank account (interactive)
-/ben_banks &lt;beneficiaryId&gt; — List bank accounts
-/ben_bank &lt;beneficiaryId&gt; &lt;bankId&gt; — Get bank account
-/attach_crypto — Attach crypto address (interactive)
-/ben_wallets &lt;beneficiaryId&gt; — List crypto addresses
-/ben_wallet &lt;beneficiaryId&gt; &lt;walletId&gt; — Get crypto address
+    `🏛 <b>BANK ACCOUNTS</b>\n` +
+    `/bank_accounts — Project bank accounts\n` +
+    `/company_accounts — Company deposit accounts`,
 
-<b>── Bank Accounts ──</b>
-/bank_accounts — Project's own bank accounts
-/company_accounts — Company deposit accounts
+    `💸 <b>PAYOUTS</b>\n` +
+    `/quote_payout ⚡ — Get quote\n` +
+    `/create_payout ⚡ — Create new\n` +
+    `/payouts — List all\n` +
+    `/payout <code>&lt;id&gt;</code> — Get details\n` +
+    `/edit_payout ⚡ — Modify\n` +
+    `/cancel_payout <code>&lt;id&gt;</code> — Cancel`,
 
-<b>── Payouts ──</b>
-/quote_payout — Quote (interactive)
-/create_payout — Create (interactive)
-/payouts — List payouts
-/payout &lt;id&gt; — Get a payout
-/edit_payout — Edit (interactive)
-/cancel_payout &lt;id&gt; — Cancel
+    `📑 <b>TRANSACTIONS</b>\n` +
+    `/transactions — List all\n` +
+    `/tx_summary — Volume summary`,
 
-<b>── Transactions ──</b>
-/transactions — List transactions
-/tx_summary — Transaction summary
+    `🔗 <b>PAYMENT LINKS</b>\n` +
+    `/create_pl ⚡ — Create new\n` +
+    `/payment_links — List all\n` +
+    `/payment_link <code>&lt;id&gt;</code> — Get details\n` +
+    `/edit_pl ⚡ — Modify\n` +
+    `/cancel_pl <code>&lt;id&gt;</code> — Cancel\n` +
+    `/signal_pl <code>&lt;id&gt; &lt;txHash&gt;</code> — Signal deposit\n` +
+    `/pl_invoice <code>&lt;id&gt;</code> — Get invoice\n` +
+    `/resend_pl_invoice <code>&lt;id&gt;</code> — Resend invoice\n` +
+    `/deposits_review — Under review`,
 
-<b>── Payment Links ──</b>
-/create_pl — Create (interactive)
-/payment_links — List payment links
-/payment_link &lt;id&gt; — Get a payment link
-/edit_pl — Edit (interactive)
-/cancel_pl &lt;id&gt; — Cancel
-/signal_pl &lt;linkId&gt; &lt;txHash&gt; — Signal crypto deposit
-/pl_invoice &lt;linkId&gt; — Download invoice info
-/resend_pl_invoice &lt;linkId&gt; — Resend invoice
-/deposits_review — Deposits under review
+    `📥 <b>DEPOSIT REQUESTS</b>\n` +
+    `/create_dr ⚡ — Create new\n` +
+    `/deposit_requests — List all\n` +
+    `/deposit_request <code>&lt;id&gt;</code> — Get details\n` +
+    `/edit_dr ⚡ — Modify\n` +
+    `/cancel_dr <code>&lt;id&gt;</code> — Cancel\n` +
+    `/signal_dr ⚡ — Signal deposit\n` +
+    `/dr_collections <code>&lt;id&gt;</code> — Collections`,
 
-<b>── Deposit Requests ──</b>
-/create_dr — Create (interactive)
-/deposit_requests — List deposit requests
-/deposit_request &lt;id&gt; — Get a deposit request
-/edit_dr — Edit (interactive)
-/cancel_dr &lt;id&gt; — Cancel
-/signal_dr &lt;id&gt; — Signal deposit expected (interactive)
-/dr_collections &lt;id&gt; — List collections
+    `📧 <b>EMAILS</b>\n` +
+    `/email_types — Available types\n` +
+    `/send_email ⚡ — Send email`,
 
-<b>── Emails ──</b>
-/email_types — List dispatchable email types
-/send_email — Dispatch email (interactive)
-
-<i>Interactive commands will ask for parameters step by step.
-For list commands, add optional: limit offset</i>
-<i>e.g. /currencies 5 0</i>`
-  );
+    `🔧 <b>POWER USER</b>\n` +
+    `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n\n` +
+    `<i>💡 Tip: Most list commands accept</i> <code>limit offset</code>\n` +
+    `<i>🚫 /cancel — Abort any interactive flow</i>`,
+  ];
+  for (const section of sections) {
+    await reply(chatId, section);
+  }
 });
 
 // ── /me ──────────────────────────────────────────────────────────────────────
