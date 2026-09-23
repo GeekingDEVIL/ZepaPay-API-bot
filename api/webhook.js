@@ -886,13 +886,13 @@ async function handle(chatId, text) {
       if (await needsAuth(chatId)) return;
       return await startConvo(chatId, [
         { key: "customerId",
-          prompt: "👤 <b>Select a customer</b> (or 'skip'):",
+          prompt: "👤 <b>Select a customer:</b>",
           picker: async (s) => {
             const data = await api("GET", `/projects/${s.projectId}/customers?limit=20`, s.apiKey);
             if (!data.success || !data.data.customers?.length) return null;
             return data.data.customers.map(c => ({ label: `${c.name} — ${c.email}`, value: c.id }));
           } },
-        { key: "amount", prompt: "💰 Enter <b>amount</b> (e.g. 100.00, or 'skip'):" },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (e.g. 100.00):" },
         { key: "currencyId",
           prompt: "💱 <b>Select currency</b> (or 'skip' for default):",
           picker: async (s) => {
@@ -933,13 +933,12 @@ async function handle(chatId, text) {
           skipIf: (data) => !data._isCrypto,
           picker: pickers.yesNo,
           execute: (s, d) => {
-            const body = {};
-            if (d.customerId !== "skip") body.customerId = d.customerId;
-            if (d.amount !== "skip") body.amount = parseFloat(d.amount);
+            const body = { customerId: d.customerId, amount: d.amount };
             if (d.currencyId !== "skip") body.currencyId = d.currencyId;
             if (d.documentType !== "skip") body.documentType = d.documentType;
-            if (d.networkId !== "skip") body.networkId = d.networkId;
+            if (d.networkId && d.networkId !== "skip") body.networkId = d.networkId;
             if (d.autoConvert === "true") body.autoConvert = true;
+            else body.autoConvert = false;
             return api("POST", `/projects/${s.projectId}/payment-links`, s.apiKey, body);
           } },
       ]);
@@ -1032,7 +1031,7 @@ async function handle(chatId, text) {
         { key: "documentType", prompt: "📄 <b>Document type:</b>", picker: pickers.docType,
           execute: (s, d) => {
             const body = { beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId, currencyId: d.currencyId };
-            if (d.amount !== "skip") body.amount = parseFloat(d.amount);
+            if (d.amount !== "skip") body.amount = d.amount;
             if (d.documentType !== "skip") body.documentType = d.documentType;
             return api("POST", `/projects/${s.projectId}/deposit-requests`, s.apiKey, body);
           } },
