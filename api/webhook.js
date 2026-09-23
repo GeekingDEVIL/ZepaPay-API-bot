@@ -420,7 +420,7 @@ async function handle(chatId, text) {
         `/cancel_payout <code>&lt;id&gt;</code> — Cancel`,
 
         `📑 <b>TRANSACTIONS</b>\n` +
-        `/transactions — List all\n` +
+        `/transactions [page] — List (paginated)\n` +
         `/tx_export — Export CSV\n` +
         `/tx_summary — Volume summary`,
 
@@ -804,9 +804,20 @@ async function handle(chatId, text) {
     case "/company_accounts":
       if (await needsAuth(chatId)) return;
       try {
-        const data = await api("GET", `/projects/${s.projectId}/bank-accounts/company`, s.apiKey);
+        const data = await api("GET", `/projects/${s.projectId}/bank-accounts?type=company`, s.apiKey);
         if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
-        return send(chatId, `🏦 <b>Company Accounts</b>\n\n${fmt(data.data)}`);
+        const accts = data.data.bankAccounts || data.data["bank-accounts"] || [];
+        if (!accts.length) return send(chatId, "No company bank accounts found.");
+        let msg = `🏦 <b>Company Bank Accounts</b> (${accts.length})\n\n`;
+        accts.forEach((a, i) => {
+          msg += `${i + 1}. <b>${a.alias || a.ownerName || "—"}</b>\n` +
+            `   Bank: ${a.bankName || "—"}\n` +
+            `   IBAN: <code>${a.iban || "—"}</code>\n` +
+            `   Currency: ${a.currency?.symbol || a.currencyCode?.toUpperCase() || "—"}\n` +
+            `   Status: ${a.status || "—"} | Approval: ${a.approvalStatus || "—"}\n` +
+            `   ID: <code>${a.id}</code>\n\n`;
+        });
+        return send(chatId, msg);
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
 
     // ── Payouts ──────────────────────────────────────────────────────────────
@@ -882,14 +893,28 @@ async function handle(chatId, text) {
     // ── Transactions ─────────────────────────────────────────────────────────
     case "/transactions": {
       if (await needsAuth(chatId)) return;
-      const limit = args[0] || 20, offset = args[1] || 0;
+      const pgSize = 10;
+      const page = Math.max(1, parseInt(args[0]) || 1);
+      const offset = (page - 1) * pgSize;
       try {
-        const data = await api("GET", `/projects/${s.projectId}/transactions?limit=${limit}&offset=${offset}`, s.apiKey);
+        const data = await api("GET", `/projects/${s.projectId}/transactions?limit=${pgSize}&offset=${offset}`, s.apiKey);
         if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
         const list = data.data.transactions || [];
+        const total = data.data.total || 0;
+        const totalPages = Math.ceil(total / pgSize);
         if (!list.length) return send(chatId, "No transactions found.");
-        let t = `📑 <b>Transactions</b> (${data.data.total} total)\n\n`;
-        list.forEach(x => { t += `<b>${x.id}</b>\n  Type: ${x.type || "—"} | Amount: ${x.amountFormatted || x.amount || "—"}\n\n`; });
+        let t = `📑 <b>Transactions</b> — page ${page}/${totalPages} (${total} total)\n\n`;
+        list.forEach((x, i) => {
+          const dir = x.direction === "in" ? "⬇️" : x.direction === "out" ? "⬆️" : "↔️";
+          t += `${offset + i + 1}. ${dir} <b>${x.type || "—"}</b> — ${x.amountFormatted || x.amount || "?"} ${x.currencySymbol || ""}\n` +
+            `   Fee: ${x.feeFormatted || "0"} | Net: ${x.netAmountFormatted || x.amountFormatted || "—"}\n` +
+            `   Status: ${x.status || "—"}` + (x.contactName ? ` | Contact: ${x.contactName}` : "") + `\n` +
+            `   Ref: <code>${x.reference || x.sourceId || "—"}</code>\n` +
+            (x.network?.name ? `   Network: ${x.network.name}\n` : "") +
+            `   ${x.createdAt ? x.createdAt.slice(0, 16).replace("T", " ") : "—"}\n\n`;
+        });
+        if (page < totalPages) t += `➡️ Next: <code>/transactions ${page + 1}</code>\n`;
+        if (page > 1) t += `⬅️ Prev: <code>/transactions ${page - 1}</code>`;
         return send(chatId, t);
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
     }
