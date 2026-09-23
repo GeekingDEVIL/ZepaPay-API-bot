@@ -82,12 +82,150 @@ async function needsAuth(chatId) {
   return false;
 }
 
+// ── Reusable pickers ─────────────────────────────────────────────────────────
+
+const pickers = {
+  customers: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/customers?limit=20`, s.apiKey);
+    if (!data.success || !data.data.customers?.length) return null;
+    return data.data.customers.map(c => ({ label: `${c.name} — ${c.email}`, value: c.id }));
+  },
+  currencies: async (s) => {
+    const data = await api("GET", `/currencies?limit=50`, s.apiKey);
+    if (!data.success || !data.data.currencies?.length) return null;
+    return data.data.currencies.map(c => ({ label: `${c.symbol} — ${c.name}`, value: c.id }));
+  },
+  networks: async (s) => {
+    const data = await api("GET", `/networks?limit=50`, s.apiKey);
+    if (!data.success || !data.data.networks?.length) return null;
+    return data.data.networks.map(n => ({ label: `${n.code || n.name} — ${n.name}`, value: n.id }));
+  },
+  beneficiaries: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/beneficiaries?limit=20`, s.apiKey);
+    if (!data.success || !data.data.beneficiaries?.length) return null;
+    return data.data.beneficiaries.map(b => ({
+      label: `${b.nickname || b.businessName || b.firstName || "—"} (${b.type})`,
+      value: b.id,
+    }));
+  },
+  bankAccounts: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/bank-accounts`, s.apiKey);
+    if (!data.success) return null;
+    const list = data.data.bankAccounts || data.data["bank-accounts"] || (Array.isArray(data.data) ? data.data : []);
+    if (!list.length) return null;
+    return list.map(b => ({
+      label: `${b.alias || b.bankName || b.id} — ${b.currencyCode || ""}`,
+      value: b.id,
+    }));
+  },
+  benBanks: async (s, data) => {
+    const benId = data.beneficiaryId;
+    if (!benId || benId === "skip") return null;
+    const res = await api("GET", `/projects/${s.projectId}/beneficiaries/${benId}/bank-accounts`, s.apiKey);
+    if (!res.success) return null;
+    const list = res.data.bankAccounts || res.data["bank-accounts"] || (Array.isArray(res.data) ? res.data : []);
+    if (!list.length) return null;
+    return list.map(b => ({
+      label: `${b.alias || b.bankName || b.id} — ${b.currencyCode || ""}`,
+      value: b.id,
+    }));
+  },
+  settlements: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/settlements?limit=20`, s.apiKey);
+    if (!data.success || !data.data.settlements?.length) return null;
+    return data.data.settlements.map(x => ({
+      label: `${x.status} — ${x.amountFormatted || x.amount || x.id}`,
+      value: x.id,
+    }));
+  },
+  payouts: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/payouts?limit=20`, s.apiKey);
+    if (!data.success || !data.data.payouts?.length) return null;
+    return data.data.payouts.map(p => ({
+      label: `${p.status} — ${p.amountFormatted || p.amount || p.id}`,
+      value: p.id,
+    }));
+  },
+  paymentLinks: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/payment-links?limit=20`, s.apiKey);
+    if (!data.success) return null;
+    const list = data.data.paymentLinks || data.data["payment-links"] || [];
+    if (!list.length) return null;
+    return list.map(p => ({
+      label: `${p.status || "—"} — ${p.amount || "no amount"} ${p.id.slice(0, 8)}`,
+      value: p.id,
+    }));
+  },
+  depositRequests: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/deposit-requests?limit=20`, s.apiKey);
+    if (!data.success) return null;
+    const list = data.data.depositRequests || data.data["deposit-requests"] || [];
+    if (!list.length) return null;
+    return list.map(d => ({
+      label: `${d.stage || "—"} — ${d.expectedDepositAmount || d.id.slice(0, 8)}`,
+      value: d.id,
+    }));
+  },
+  emailTypes: async (s) => {
+    const data = await api("GET", `/projects/${s.projectId}/emails/types`, s.apiKey);
+    if (!data.success) return null;
+    const list = data.data.emailTypes || data.data["email-types"] || (Array.isArray(data.data) ? data.data : []);
+    if (!list.length) return null;
+    return list.map(e => ({
+      label: e.name || e.slug || e,
+      value: e.slug || e.id || e,
+    }));
+  },
+  countries: async (s) => {
+    const data = await api("GET", "/bank-fields/countries", s.apiKey);
+    if (!data.success) return null;
+    const list = data.data.countries || (Array.isArray(data.data) ? data.data : []);
+    if (!list.length) return null;
+    return list.map(c => ({
+      label: typeof c === "string" ? c : `${c.code} — ${c.name || c.code}`,
+      value: typeof c === "string" ? c : c.code,
+    }));
+  },
+  docType: async () => [
+    { label: "Invoice", value: "invoice" },
+    { label: "Deposit Slip", value: "deposit_slip" },
+    { label: "Skip (default)", value: "skip" },
+  ],
+  yesNo: async () => [
+    { label: "No (default)", value: "skip" },
+    { label: "Yes", value: "true" },
+  ],
+  benType: async () => [
+    { label: "Individual (B2C)", value: "b2c" },
+    { label: "Business (B2B)", value: "b2b" },
+  ],
+};
+
 // ── Conversation flow engine ─────────────────────────────────────────────────
 
-function startConvo(chatId, steps) {
-  conversations.set(chatId, { steps, current: 0, data: {} });
-  const step = steps[0];
-  send(chatId, step.prompt);
+async function showStepPrompt(chatId, step, data) {
+  const s = sess(chatId);
+  // If step has a picker function, fetch choices and show numbered list
+  if (step.picker && s) {
+    try {
+      const choices = await step.picker(s, data);
+      if (choices && choices.length > 0) {
+        const convo = conversations.get(chatId);
+        if (convo) convo._choices = choices;
+        let list = choices.map((c, i) => `  <b>${i + 1}.</b> ${c.label}`).join("\n");
+        const header = typeof step.prompt === "function" ? step.prompt(data) : step.prompt;
+        send(chatId, `${header}\n\n${list}\n\n<i>Reply with a number to select, or type a value directly.</i>`);
+        return;
+      }
+    } catch (e) { /* fall through to plain prompt */ }
+  }
+  const prompt = typeof step.prompt === "function" ? step.prompt(data) : step.prompt;
+  send(chatId, prompt);
+}
+
+async function startConvo(chatId, steps) {
+  conversations.set(chatId, { steps, current: 0, data: {}, _choices: null });
+  await showStepPrompt(chatId, steps[0], {});
 }
 
 async function handleConvo(chatId, text) {
@@ -95,17 +233,26 @@ async function handleConvo(chatId, text) {
   if (!convo) return false;
 
   const step = convo.steps[convo.current];
+
+  // Resolve picker selection by number
+  let value = text;
+  if (convo._choices && /^\d+$/.test(text.trim())) {
+    const idx = parseInt(text.trim()) - 1;
+    if (idx >= 0 && idx < convo._choices.length) {
+      value = convo._choices[idx].value;
+    }
+  }
+  convo._choices = null;
+
   if (step.validate) {
-    const err = step.validate(text);
+    const err = step.validate(value);
     if (err) { send(chatId, `⚠️ ${err}`); return true; }
   }
-  convo.data[step.key] = step.transform ? step.transform(text) : text;
+  convo.data[step.key] = step.transform ? step.transform(value) : value;
   convo.current++;
 
   if (convo.current < convo.steps.length) {
-    const next = convo.steps[convo.current];
-    const prompt = typeof next.prompt === "function" ? next.prompt(convo.data) : next.prompt;
-    send(chatId, prompt);
+    await showStepPrompt(chatId, convo.steps[convo.current], convo.data);
     return true;
   }
 
@@ -370,9 +517,9 @@ async function handle(chatId, text) {
     case "/quote_exchange":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "fromCurrencyId", prompt: "Enter <b>fromCurrencyId</b> (UUID):\n\n<i>Use /currencies to find IDs</i>" },
-        { key: "toCurrencyId", prompt: "Enter <b>toCurrencyId</b> (UUID):" },
-        { key: "amount", prompt: "Enter <b>amount</b> (human-readable, e.g. 100.50):",
+        { key: "fromCurrencyId", prompt: "💱 <b>From currency:</b>", picker: pickers.currencies },
+        { key: "toCurrencyId", prompt: "💱 <b>To currency:</b>", picker: pickers.currencies },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (e.g. 100.50):",
           execute: (s, d) => api("POST", `/projects/${s.projectId}/exchange/quote`, s.apiKey,
             { projectId: s.projectId, fromCurrencyId: d.fromCurrencyId, toCurrencyId: d.toCurrencyId, amount: d.amount }) },
       ]);
@@ -380,10 +527,10 @@ async function handle(chatId, text) {
     case "/execute_exchange":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "fromCurrencyId", prompt: "⚠️ <b>This moves real funds!</b>\n\nEnter <b>fromCurrencyId</b>:" },
-        { key: "toCurrencyId", prompt: "Enter <b>toCurrencyId</b>:" },
-        { key: "amount", prompt: "Enter <b>amount</b> (human-readable):" },
-        { key: "idempotencyKey", prompt: "Enter <b>idempotencyKey</b> (or 'auto'):",
+        { key: "fromCurrencyId", prompt: "⚠️ <b>This moves real funds!</b>\n\n💱 <b>From currency:</b>", picker: pickers.currencies },
+        { key: "toCurrencyId", prompt: "💱 <b>To currency:</b>", picker: pickers.currencies },
+        { key: "amount", prompt: "💰 Enter <b>amount</b>:" },
+        { key: "idempotencyKey", prompt: "🔑 Enter <b>idempotencyKey</b> (or 'auto'):",
           execute: (s, d) => api("POST", `/projects/${s.projectId}/exchange`, s.apiKey,
             { projectId: s.projectId, fromCurrencyId: d.fromCurrencyId, toCurrencyId: d.toCurrencyId, amount: d.amount,
               ...(d.idempotencyKey !== "auto" && { idempotencyKey: d.idempotencyKey }) }) },
@@ -393,8 +540,8 @@ async function handle(chatId, text) {
     case "/quote_settlement":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b> (UUID):" },
-        { key: "amount", prompt: "Enter <b>amount</b> (net):\n<i>Prefix with 'gross:' for grossAmount</i>",
+        { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix with 'gross:' for grossAmount</i>",
           execute: (s, d) => {
             const body = { bankAccountId: d.bankAccountId };
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
@@ -405,10 +552,10 @@ async function handle(chatId, text) {
     case "/create_settlement":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "bankAccountId", prompt: "⚠️ <b>Moves real funds!</b>\n\nEnter <b>bankAccountId</b>:" },
-        { key: "amount", prompt: "Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>" },
-        { key: "remarks", prompt: "Enter <b>remarks</b> (or 'skip'):" },
-        { key: "idempotencyKey", prompt: "Enter <b>idempotencyKey</b> (or 'auto'):",
+        { key: "bankAccountId", prompt: "⚠️ <b>Moves real funds!</b>\n\n🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>" },
+        { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):" },
+        { key: "idempotencyKey", prompt: "🔑 Enter <b>idempotencyKey</b> (or 'auto'):",
           execute: (s, d) => {
             const body = { projectId: s.projectId, bankAccountId: d.bankAccountId };
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
@@ -444,7 +591,7 @@ async function handle(chatId, text) {
     case "/edit_settlement":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "id", prompt: "Enter <b>settlement ID</b>:" },
+        { key: "id", prompt: "📋 <b>Select settlement to edit:</b>", picker: pickers.settlements },
         { key: "body", prompt: "Send fields as JSON:\n<code>{\"remarks\": \"...\"}</code>",
           validate: t => parseJson(t) ? null : "Invalid JSON", transform: t => parseJson(t),
           execute: (s, d) => api("PUT", `/projects/${s.projectId}/settlements/${d.id}`, s.apiKey, d.body) },
@@ -491,9 +638,9 @@ async function handle(chatId, text) {
     case "/create_beneficiary":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "type", prompt: "Enter <b>type</b>: <code>b2c</code> or <code>b2b</code>:" },
-        { key: "nickname", prompt: "Enter <b>nickname</b>:" },
-        { key: "extra", prompt: d => d.type === "b2b" ? "Enter <b>businessName</b>:" : "Enter <b>firstName lastName</b>:",
+        { key: "type", prompt: "👤 <b>Beneficiary type:</b>", picker: pickers.benType },
+        { key: "nickname", prompt: "📝 Enter a <b>nickname</b> for this beneficiary:" },
+        { key: "extra", prompt: d => d.type === "b2b" ? "🏢 Enter <b>business name</b>:" : "👤 Enter <b>first name</b> and <b>last name</b>:",
           execute: (s, d) => {
             const body = { projectId: s.projectId, type: d.type, nickname: d.nickname };
             if (d.type === "b2b") { body.businessName = d.extra; }
@@ -528,12 +675,12 @@ async function handle(chatId, text) {
     case "/attach_bank":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "beneficiaryId", prompt: "Enter <b>beneficiaryId</b>:" },
-        { key: "alias", prompt: "Enter <b>alias</b>:" },
-        { key: "currencyCode", prompt: "Enter <b>currencyCode</b> (e.g. inr_fiat):" },
-        { key: "country", prompt: "Enter <b>country</b> (e.g. IN):" },
-        { key: "accountNumber", prompt: "Enter <b>accountNumber</b> (or IBAN):" },
-        { key: "railFields", prompt: "Enter <b>railFields</b> as JSON or 'skip':",
+        { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
+        { key: "alias", prompt: "📝 Enter an <b>alias</b> for this bank account:" },
+        { key: "currencyCode", prompt: "💱 Enter <b>currency code</b> (e.g. inr_fiat, usd_fiat):" },
+        { key: "country", prompt: "🌍 <b>Select country:</b>", picker: pickers.countries },
+        { key: "accountNumber", prompt: "🔢 Enter <b>account number</b> (or IBAN):" },
+        { key: "railFields", prompt: "🔧 Enter <b>railFields</b> as JSON or 'skip':",
           transform: t => t === "skip" ? null : parseJson(t),
           execute: (s, d) => {
             const body = { alias: d.alias, currencyCode: d.currencyCode, country: d.country, accountNumber: d.accountNumber };
@@ -563,10 +710,15 @@ async function handle(chatId, text) {
     case "/attach_crypto":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "beneficiaryId", prompt: "Enter <b>beneficiaryId</b>:" },
-        { key: "networkCode", prompt: "Enter <b>networkCode</b> (e.g. ETH, BASE, TRX):" },
-        { key: "address", prompt: "Enter <b>wallet address</b>:" },
-        { key: "alias", prompt: "Enter <b>alias</b> (or 'skip'):",
+        { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
+        { key: "networkCode", prompt: "🌐 <b>Select network:</b>",
+          picker: async (s) => {
+            const list = await pickers.networks(s);
+            if (!list) return null;
+            return list.map(n => ({ label: n.label, value: n.label.split(" — ")[0] }));
+          } },
+        { key: "address", prompt: "🔗 Enter <b>wallet address</b>:" },
+        { key: "alias", prompt: "📝 Enter <b>alias</b> (or 'skip'):",
           execute: (s, d) => {
             const body = { networkCode: d.networkCode, address: d.address };
             if (d.alias !== "skip") body.alias = d.alias;
@@ -613,8 +765,8 @@ async function handle(chatId, text) {
     case "/quote_payout":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b>:" },
-        { key: "amount", prompt: "Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>",
+        { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>",
           execute: (s, d) => {
             const body = { bankAccountId: d.bankAccountId };
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
@@ -625,11 +777,11 @@ async function handle(chatId, text) {
     case "/create_payout":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "beneficiaryId", prompt: "⚠️ <b>Moves real funds!</b>\n\nEnter <b>beneficiaryId</b>:" },
-        { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b>:" },
-        { key: "amount", prompt: "Enter <b>amount</b> (net):" },
-        { key: "idempotencyKey", prompt: "Enter <b>idempotencyKey</b> (required):" },
-        { key: "remarks", prompt: "Enter <b>remarks</b> (or 'skip'):",
+        { key: "beneficiaryId", prompt: "⚠️ <b>Moves real funds!</b>\n\n👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
+        { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
+        { key: "idempotencyKey", prompt: "🔑 Enter <b>idempotencyKey</b> (required):" },
+        { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):",
           execute: (s, d) => {
             const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId,
               amount: d.amount, idempotencyKey: d.idempotencyKey };
@@ -664,7 +816,7 @@ async function handle(chatId, text) {
     case "/edit_payout":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "id", prompt: "Enter <b>payout ID</b>:" },
+        { key: "id", prompt: "💸 <b>Select payout to edit:</b>", picker: pickers.payouts },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
           execute: (s, d) => api("PUT", `/projects/${s.projectId}/payouts/${d.id}`, s.apiKey, d.body) },
@@ -706,16 +858,52 @@ async function handle(chatId, text) {
     case "/create_pl":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "customerId", prompt: "Enter <b>customerId</b> (or 'skip'):" },
-        { key: "amount", prompt: "Enter <b>amount</b> (or 'skip'):" },
-        { key: "currencyId", prompt: "Enter <b>currencyId</b> (or 'skip' for USD):" },
-        { key: "documentType", prompt: "<b>documentType</b>: <code>invoice</code> or <code>deposit_slip</code> (or 'skip'):",
+        { key: "customerId",
+          prompt: "👤 <b>Select a customer</b> (or 'skip'):",
+          picker: async (s) => {
+            const data = await api("GET", `/projects/${s.projectId}/customers?limit=20`, s.apiKey);
+            if (!data.success || !data.data.customers?.length) return null;
+            return data.data.customers.map(c => ({ label: `${c.name} — ${c.email}`, value: c.id }));
+          } },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (e.g. 100.00, or 'skip'):" },
+        { key: "currencyId",
+          prompt: "💱 <b>Select currency</b> (or 'skip' for default):",
+          picker: async (s) => {
+            const data = await api("GET", `/currencies?limit=50`, s.apiKey);
+            if (!data.success || !data.data.currencies?.length) return null;
+            return data.data.currencies.map(c => ({ label: `${c.symbol} — ${c.name}`, value: c.id }));
+          } },
+        { key: "documentType",
+          prompt: "📄 <b>Document type</b>:",
+          picker: async () => [
+            { label: "Invoice", value: "invoice" },
+            { label: "Deposit Slip", value: "deposit_slip" },
+            { label: "Skip (default)", value: "skip" },
+          ] },
+        { key: "networkId",
+          prompt: "🌐 <b>Blockchain network</b> (or 'skip'):",
+          picker: async (s) => {
+            const data = await api("GET", `/networks?limit=50`, s.apiKey);
+            if (!data.success || !data.data.networks?.length) return null;
+            return [
+              ...data.data.networks.map(n => ({ label: `${n.code || n.name} — ${n.name}`, value: n.id })),
+              { label: "Skip", value: "skip" },
+            ];
+          } },
+        { key: "autoConvert",
+          prompt: "🔄 <b>Auto-convert deposit to requested currency?</b>",
+          picker: async () => [
+            { label: "No (default)", value: "skip" },
+            { label: "Yes", value: "true" },
+          ],
           execute: (s, d) => {
             const body = {};
             if (d.customerId !== "skip") body.customerId = d.customerId;
             if (d.amount !== "skip") body.amount = d.amount;
             if (d.currencyId !== "skip") body.currencyId = d.currencyId;
             if (d.documentType !== "skip") body.documentType = d.documentType;
+            if (d.networkId !== "skip") body.networkId = d.networkId;
+            if (d.autoConvert === "true") body.autoConvert = true;
             return api("POST", `/projects/${s.projectId}/payment-links`, s.apiKey, body);
           } },
       ]);
@@ -746,7 +934,7 @@ async function handle(chatId, text) {
     case "/edit_pl":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "id", prompt: "Enter <b>payment link ID</b>:" },
+        { key: "id", prompt: "🔗 <b>Select payment link to edit:</b>", picker: pickers.paymentLinks },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
           execute: (s, d) => api("PUT", `/projects/${s.projectId}/payment-links/${d.id}`, s.apiKey, d.body) },
@@ -801,11 +989,11 @@ async function handle(chatId, text) {
     case "/create_dr":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "beneficiaryId", prompt: "Enter <b>beneficiaryId</b>:" },
-        { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b>:" },
-        { key: "currencyId", prompt: "Enter <b>currencyId</b>:" },
-        { key: "amount", prompt: "Enter <b>amount</b> (or 'skip'):" },
-        { key: "documentType", prompt: "<b>documentType</b>: <code>invoice</code> / <code>deposit_slip</code> (or 'skip'):",
+        { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
+        { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
+        { key: "currencyId", prompt: "💱 <b>Select currency:</b>", picker: pickers.currencies },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (or 'skip'):" },
+        { key: "documentType", prompt: "📄 <b>Document type:</b>", picker: pickers.docType,
           execute: (s, d) => {
             const body = { beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId, currencyId: d.currencyId };
             if (d.amount !== "skip") body.amount = d.amount;
@@ -840,7 +1028,7 @@ async function handle(chatId, text) {
     case "/edit_dr":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "id", prompt: "Enter <b>deposit request ID</b>:" },
+        { key: "id", prompt: "📥 <b>Select deposit request to edit:</b>", picker: pickers.depositRequests },
         { key: "body", prompt: "Send fields as JSON:", validate: t => parseJson(t) ? null : "Invalid JSON",
           transform: t => parseJson(t),
           execute: (s, d) => api("PUT", `/projects/${s.projectId}/deposit-requests/${d.id}`, s.apiKey, d.body) },
@@ -885,9 +1073,9 @@ async function handle(chatId, text) {
     case "/send_email":
       if (await needsAuth(chatId)) return;
       return startConvo(chatId, [
-        { key: "emailType", prompt: "Enter <b>emailType</b> slug:" },
-        { key: "resourceId", prompt: "Enter <b>resourceId</b> (UUID):" },
-        { key: "to", prompt: "Enter <b>to</b> emails (comma separated, or 'skip'):",
+        { key: "emailType", prompt: "📧 <b>Select email type:</b>", picker: pickers.emailTypes },
+        { key: "resourceId", prompt: "🔗 Enter <b>resource ID</b> (the entity this email is about):" },
+        { key: "to", prompt: "📨 Enter <b>recipient emails</b> (comma separated, or 'skip'):",
           execute: (s, d) => {
             const body = { emailType: d.emailType, resourceId: d.resourceId };
             if (d.to !== "skip") body.to = d.to.split(",").map(e => e.trim());
