@@ -839,11 +839,10 @@ async function handle(chatId, text) {
         { key: "beneficiaryId", prompt: "⚠️ <b>Moves real funds!</b>\n\n👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
-        { key: "idempotencyKey", prompt: "🔑 Enter <b>idempotencyKey</b> (required):" },
         { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):",
           execute: (s, d) => {
             const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId,
-              amount: d.amount, idempotencyKey: d.idempotencyKey };
+              amount: d.amount, idempotencyKey: `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
             if (d.remarks !== "skip") body.remarks = d.remarks;
             return api("POST", `/projects/${s.projectId}/payouts`, s.apiKey, body);
           } },
