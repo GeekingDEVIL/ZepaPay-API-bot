@@ -162,7 +162,7 @@ const pickers = {
     const list = data.data.paymentLinks || data.data["payment-links"] || [];
     if (!list.length) return null;
     return list.map(p => ({
-      label: `${p.status || "—"} — ${p.amount || "no amount"} ${p.id.slice(0, 8)}`,
+      label: `${p.status || "—"} — ${p.amount || "?"} ${p.currency?.symbol || ""} — ${p.customer?.name || ""}`,
       value: p.id,
     }));
   },
@@ -172,7 +172,7 @@ const pickers = {
     const list = data.data.depositRequests || data.data["deposit-requests"] || [];
     if (!list.length) return null;
     return list.map(d => ({
-      label: `${d.stage || "—"} — ${d.expectedDepositAmount || d.id.slice(0, 8)}`,
+      label: `${d.stage || "—"} — ${d.expectedDepositAmount || "?"} ${d.expectedDepositCurrency?.symbol || ""} — ${d.beneficiary?.name || d.beneficiaryId?.slice(0, 8) || ""}`,
       value: d.id,
     }));
   },
@@ -1052,9 +1052,10 @@ async function handle(chatId, text) {
               await send(s._chatId, `📋 <b>Payment Link Details</b>\n\n` +
                 `<b>ID:</b> <code>${d.id || d.paymentLinkId}</code>\n` +
                 `<b>Status:</b> ${d.status || "—"}\n` +
-                `<b>Amount:</b> ${d.amountFormatted || d.amount || "—"}\n` +
-                `<b>Currency:</b> ${d.currencySymbol || d.currencyId || "—"}\n` +
-                `<b>Customer:</b> ${d.customerName || d.customerId || "—"}\n` +
+                `<b>Amount:</b> ${d.amount || "—"} ${d.currency?.symbol || ""}\n` +
+                `<b>Currency:</b> ${d.currency?.name || "—"} (${d.currency?.symbol || "—"})\n` +
+                `<b>Customer:</b> ${d.customer?.name || "—"} (${d.customer?.email || "—"})\n` +
+                `<b>Doc Type:</b> ${d.documentType || "—"}\n` +
                 `<b>URL:</b> <a href="${d.url || ""}">${d.url || "—"}</a>`);
             }
           } },
@@ -1156,10 +1157,12 @@ async function handle(chatId, text) {
               const d = det.data;
               await send(s._chatId, `📋 <b>Deposit Details</b>\n\n` +
                 `<b>ID:</b> <code>${d.id}</code>\n` +
+                `<b>Ref:</b> ${d.externalReference || d.referenceId || "—"}\n` +
                 `<b>Stage:</b> ${d.stage || "—"}\n` +
-                `<b>Amount:</b> ${d.expectedDepositAmountFormatted || d.expectedDepositAmount || "—"}\n` +
-                `<b>Currency:</b> ${d.currencySymbol || d.currencyId || "—"}\n` +
-                `<b>Customer:</b> ${d.customerName || d.customerId || "—"}\n` +
+                `<b>Amount:</b> ${d.expectedDepositAmount || "—"} ${d.expectedDepositCurrency?.symbol || ""}\n` +
+                `<b>Currency:</b> ${d.expectedDepositCurrency?.name || "—"} (${d.expectedDepositCurrency?.symbol || "—"})\n` +
+                `<b>Beneficiary:</b> ${d.beneficiary?.name || "—"} (${d.beneficiary?.email || "—"})\n` +
+                `<b>Bank:</b> ${d.bankAccount?.bankName || "—"} — ${d.bankAccount?.iban || "—"}\n` +
                 `<b>Created:</b> ${d.createdAt || "—"}`);
             }
           } },
