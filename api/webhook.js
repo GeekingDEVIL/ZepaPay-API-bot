@@ -265,6 +265,12 @@ async function handleConvo(chatId, text) {
     if (err) { await send(chatId, `⚠️ ${err}`); return true; }
   }
   convo.data[step.key] = step.transform ? step.transform(value) : value;
+
+  if (step.onPick) {
+    const s = sess(chatId);
+    if (s) { s._chatId = chatId; await step.onPick(s, convo.data); }
+  }
+
   convo.current++;
 
   // Skip steps whose condition returns false
@@ -425,7 +431,7 @@ async function handle(chatId, text) {
         `/edit_pl ⚡ — Modify\n` +
         `/cancel_pl <code>&lt;id&gt;</code> — Cancel\n` +
         `/signal_pl <code>&lt;id&gt; &lt;txHash&gt;</code> — Signal deposit\n` +
-        `/pl_proof <code>&lt;id&gt;</code> ⚡ — Upload proof of payment\n` +
+        `/pl_proof ⚡ — Upload proof of payment\n` +
         `/pl_invoice <code>&lt;id&gt;</code> — Get invoice\n` +
         `/resend_pl_invoice <code>&lt;id&gt;</code> — Resend invoice\n` +
         `/deposits_review — Under review`,
@@ -1037,10 +1043,23 @@ async function handle(chatId, text) {
 
     case "/pl_proof":
       if (await needsAuth(chatId)) return;
-      if (!arg) return send(chatId, "Usage: /pl_proof &lt;linkId&gt;");
       return await startConvo(chatId, [
+        { key: "linkId", prompt: "🔗 <b>Select a payment link:</b>", picker: pickers.paymentLinks,
+          onPick: async (s, data) => {
+            const det = await api("GET", `/projects/${s.projectId}/payment-links/${data.linkId}`, s.apiKey);
+            if (det.success) {
+              const d = det.data;
+              await send(s._chatId, `📋 <b>Payment Link Details</b>\n\n` +
+                `<b>ID:</b> <code>${d.id || d.paymentLinkId}</code>\n` +
+                `<b>Status:</b> ${d.status || "—"}\n` +
+                `<b>Amount:</b> ${d.amountFormatted || d.amount || "—"}\n` +
+                `<b>Currency:</b> ${d.currencySymbol || d.currencyId || "—"}\n` +
+                `<b>Customer:</b> ${d.customerName || d.customerId || "—"}\n` +
+                `<b>URL:</b> <a href="${d.url || ""}">${d.url || "—"}</a>`);
+            }
+          } },
         { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
-          execute: (s, d) => api("POST", `/projects/${s.projectId}/payment-links/${arg}/proof`, s.apiKey, { url: d.proofUrl }) },
+          execute: (s, d) => api("POST", `/projects/${s.projectId}/payment-links/${d.linkId}/proof`, s.apiKey, { url: d.proofUrl }) },
       ]);
 
     case "/deposits_review":
@@ -1129,10 +1148,23 @@ async function handle(chatId, text) {
 
     case "/dr_proof":
       if (await needsAuth(chatId)) return;
-      if (!arg) return send(chatId, "Usage: /dr_proof &lt;depositRequestId&gt;");
       return await startConvo(chatId, [
+        { key: "drId", prompt: "📥 <b>Select a deposit request:</b>", picker: pickers.depositRequests,
+          onPick: async (s, data) => {
+            const det = await api("GET", `/projects/${s.projectId}/deposit-requests/${data.drId}`, s.apiKey);
+            if (det.success) {
+              const d = det.data;
+              await send(s._chatId, `📋 <b>Deposit Details</b>\n\n` +
+                `<b>ID:</b> <code>${d.id}</code>\n` +
+                `<b>Stage:</b> ${d.stage || "—"}\n` +
+                `<b>Amount:</b> ${d.expectedDepositAmountFormatted || d.expectedDepositAmount || "—"}\n` +
+                `<b>Currency:</b> ${d.currencySymbol || d.currencyId || "—"}\n` +
+                `<b>Customer:</b> ${d.customerName || d.customerId || "—"}\n` +
+                `<b>Created:</b> ${d.createdAt || "—"}`);
+            }
+          } },
         { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
-          execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${arg}/proof`, s.apiKey, { url: d.proofUrl }) },
+          execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${d.drId}/proof`, s.apiKey, { url: d.proofUrl }) },
       ]);
 
     case "/dr_collections":
