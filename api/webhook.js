@@ -93,7 +93,16 @@ const pickers = {
   currencies: async (s) => {
     const data = await api("GET", `/currencies?limit=50`, s.apiKey);
     if (!data.success || !data.data.currencies?.length) return null;
-    return data.data.currencies.map(c => ({ label: `${c.symbol} — ${c.name}`, value: c.id }));
+    const seen = new Set();
+    const deduped = [];
+    for (const c of data.data.currencies) {
+      const key = `${c.symbol}-${c.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const tag = c.type === "crypto" ? "🪙" : "💵";
+      deduped.push({ label: `${tag} ${c.symbol} — ${c.name}`, value: c.id, _type: c.type });
+    }
+    return deduped;
   },
   networks: async (s) => {
     const data = await api("GET", `/networks?limit=50`, s.apiKey);
@@ -238,10 +247,14 @@ async function handleConvo(chatId, text) {
 
   // Resolve picker selection by number
   let value = text;
+  let pickedChoice = null;
   if (convo._choices && /^\d+$/.test(text.trim())) {
     const idx = parseInt(text.trim()) - 1;
     if (idx >= 0 && idx < convo._choices.length) {
-      value = convo._choices[idx].value;
+      pickedChoice = convo._choices[idx];
+      value = pickedChoice.value;
+      // Store extra metadata from choice (e.g. currency type)
+      if (pickedChoice._type) convo.data._isCrypto = pickedChoice._type === "crypto";
     }
   }
   convo._choices = null;
@@ -253,8 +266,14 @@ async function handleConvo(chatId, text) {
   convo.data[step.key] = step.transform ? step.transform(value) : value;
   convo.current++;
 
-  if (convo.current < convo.steps.length) {
-    await showStepPrompt(chatId, convo.steps[convo.current], convo.data);
+  // Skip steps whose condition returns false
+  while (convo.current < convo.steps.length) {
+    const next = convo.steps[convo.current];
+    if (next.skipIf && next.skipIf(convo.data)) {
+      convo.current++;
+      continue;
+    }
+    await showStepPrompt(chatId, next, convo.data);
     return true;
   }
 
@@ -873,17 +892,28 @@ async function handle(chatId, text) {
           picker: async (s) => {
             const data = await api("GET", `/currencies?limit=50`, s.apiKey);
             if (!data.success || !data.data.currencies?.length) return null;
-            return data.data.currencies.map(c => ({ label: `${c.symbol} — ${c.name}`, value: c.id }));
-          } },
+            const seen = new Set();
+            const deduped = [];
+            for (const c of data.data.currencies) {
+              const key = `${c.symbol}-${c.type}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const tag = c.type === "crypto" ? "🪙" : "💵";
+              deduped.push({ label: `${tag} ${c.symbol} — ${c.name}`, value: c.id, _type: c.type });
+            }
+            return deduped;
+          },
+        },
         { key: "documentType",
-          prompt: "📄 <b>Document type</b>:",
-          picker: async () => [
-            { label: "Invoice", value: "invoice" },
-            { label: "Deposit Slip", value: "deposit_slip" },
-            { label: "Skip (default)", value: "skip" },
-          ] },
+          prompt: "📄 <b>Document type:</b>",
+          picker: pickers.docType },
         { key: "networkId",
-          prompt: "🌐 <b>Blockchain network</b> (or 'skip'):",
+          prompt: "🌐 <b>Blockchain network:</b>",
+          skipIf: (data) => {
+            // Skip network selection for fiat currencies
+            const cid = data.currencyId;
+            return !cid || cid === "skip" || !data._isCrypto;
+          },
           picker: async (s) => {
             const data = await api("GET", `/networks?limit=50`, s.apiKey);
             if (!data.success || !data.data.networks?.length) return null;
@@ -894,10 +924,8 @@ async function handle(chatId, text) {
           } },
         { key: "autoConvert",
           prompt: "🔄 <b>Auto-convert deposit to requested currency?</b>",
-          picker: async () => [
-            { label: "No (default)", value: "skip" },
-            { label: "Yes", value: "true" },
-          ],
+          skipIf: (data) => !data._isCrypto,
+          picker: pickers.yesNo,
           execute: (s, d) => {
             const body = {};
             if (d.customerId !== "skip") body.customerId = d.customerId;
