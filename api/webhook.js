@@ -285,8 +285,12 @@ async function handleConvo(chatId, text) {
     await send(chatId, "⏳ Sending request...");
     const lastStep = convo.steps[convo.steps.length - 1];
     const cleanData = Object.fromEntries(Object.entries(convo.data).filter(([k]) => !k.startsWith("_")));
+    console.log("execute data:", JSON.stringify(cleanData));
     const result = await lastStep.execute(s, convo.data);
-    if (!result.success) {
+    console.log("execute result:", JSON.stringify(result).slice(0, 500));
+    if (!result || typeof result !== "object") {
+      await send(chatId, `⚠️ Unexpected response: <code>${JSON.stringify(result).slice(0, 500)}</code>`);
+    } else if (!result.success) {
       let errMsg = `❌ <b>${result.error?.code || "ERROR"}</b>\n${result.error?.userMessage || result.error?.message || "Unknown error"}`;
       const extra = { ...result.error };
       delete extra.code; delete extra.userMessage; delete extra.message;
@@ -297,7 +301,8 @@ async function handleConvo(chatId, text) {
       await send(chatId, `✅ <b>Success</b>\n\n${fmt(result.data)}`);
     }
   } catch (e) {
-    await send(chatId, `❌ ${e.message}`);
+    console.error("execute error:", e);
+    await send(chatId, `❌ Error: ${e.message}\n\n<code>${e.stack?.slice(0, 500)}</code>`);
   }
   return true;
 }
@@ -1286,7 +1291,7 @@ module.exports = async (req, res) => {
       await handle(chatId, message.text.trim());
     }
   } catch (e) {
-    console.error("Webhook error:", e);
+    console.error("Webhook error:", e.message, e.stack);
   }
 
   res.status(200).send("OK");
