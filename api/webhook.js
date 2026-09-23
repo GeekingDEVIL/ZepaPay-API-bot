@@ -284,13 +284,14 @@ async function handleConvo(chatId, text) {
   try {
     await send(chatId, "⏳ Sending request...");
     const lastStep = convo.steps[convo.steps.length - 1];
+    const cleanData = Object.fromEntries(Object.entries(convo.data).filter(([k]) => !k.startsWith("_")));
     const result = await lastStep.execute(s, convo.data);
     if (!result.success) {
       let errMsg = `❌ <b>${result.error?.code || "ERROR"}</b>\n${result.error?.userMessage || result.error?.message || "Unknown error"}`;
       const extra = { ...result.error };
       delete extra.code; delete extra.userMessage; delete extra.message;
       if (Object.keys(extra).length > 0) errMsg += `\n\n<b>Details:</b>\n<code>${JSON.stringify(extra, null, 2).slice(0, 2000)}</code>`;
-      errMsg += `\n\n<b>Sent:</b>\n<code>${JSON.stringify(convo.data, null, 2).slice(0, 1500)}</code>`;
+      errMsg += `\n\n<b>Sent:</b>\n<code>${JSON.stringify(cleanData, null, 2).slice(0, 1500)}</code>`;
       await send(chatId, errMsg);
     } else {
       await send(chatId, `✅ <b>Success</b>\n\n${fmt(result.data)}`);
