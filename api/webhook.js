@@ -270,9 +270,10 @@ async function handleConvo(chatId, text) {
   // Skip steps whose condition returns false
   while (convo.current < convo.steps.length) {
     const next = convo.steps[convo.current];
-    if (next.skipIf && next.skipIf(convo.data)) {
-      convo.current++;
-      continue;
+    if (next.skipIf) {
+      const skip = next.skipIf(convo.data);
+      console.log(`Step ${convo.current} (${next.key}): skipIf=${skip}, _isCrypto=${convo.data._isCrypto}`);
+      if (skip) { convo.current++; continue; }
     }
     await showStepPrompt(chatId, next, convo.data);
     return true;
