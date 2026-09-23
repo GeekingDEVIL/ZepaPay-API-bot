@@ -1059,7 +1059,7 @@ async function handle(chatId, text) {
                 `<b>URL:</b> <a href="${d.url || ""}">${d.url || "—"}</a>`);
             }
           } },
-        { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
+        { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
           execute: (s, d) => api("POST", `/projects/${s.projectId}/payment-links/${d.linkId}/proof`, s.apiKey, { url: d.proofUrl }) },
       ]);
 
@@ -1166,7 +1166,7 @@ async function handle(chatId, text) {
                 `<b>Created:</b> ${d.createdAt || "—"}`);
             }
           } },
-        { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
+        { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
           execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${d.drId}/proof`, s.apiKey, { url: d.proofUrl }) },
       ]);
 
@@ -1220,6 +1220,19 @@ async function handle(chatId, text) {
   }
 }
 
+// ── Telegram file helper ─────────────────────────────────────────────────────
+
+async function getTelegramFileUrl(fileId) {
+  const res = await fetch(`${TG}/getFile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_id: fileId }),
+  });
+  const data = await res.json();
+  if (!data.ok || !data.result?.file_path) return null;
+  return `https://api.telegram.org/file/bot${TOKEN}/${data.result.file_path}`;
+}
+
 // ── Vercel handler ───────────────────────────────────────────────────────────
 
 module.exports = async (req, res) => {
@@ -1227,8 +1240,33 @@ module.exports = async (req, res) => {
 
   try {
     const { message } = req.body || {};
-    if (message?.text && message?.chat?.id) {
-      await handle(message.chat.id, message.text.trim());
+    if (!message?.chat?.id) return res.status(200).send("OK");
+    const chatId = message.chat.id;
+
+    // Handle photo/document uploads during conversations
+    if (!message.text && (message.photo || message.document)) {
+      const convo = conversations.get(chatId);
+      if (convo) {
+        const step = convo.steps[convo.current];
+        if (step?.file) {
+          const fileId = message.document?.file_id
+            || (message.photo && message.photo[message.photo.length - 1]?.file_id);
+          if (fileId) {
+            const fileUrl = await getTelegramFileUrl(fileId);
+            if (fileUrl) {
+              await handle(chatId, fileUrl);
+            } else {
+              await send(chatId, "⚠️ Couldn't process the file. Try again or paste a URL instead.");
+            }
+          }
+          return res.status(200).send("OK");
+        }
+      }
+      return res.status(200).send("OK");
+    }
+
+    if (message.text) {
+      await handle(chatId, message.text.trim());
     }
   } catch (e) {
     console.error("Webhook error:", e);
