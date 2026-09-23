@@ -387,7 +387,8 @@ async function handle(chatId, text) {
 
         `👥 <b>CUSTOMERS</b>\n` +
         `/create_customer ⚡ — Create new\n` +
-        `/customers — List all`,
+        `/customers — List all\n` +
+        `/customer <code>&lt;id&gt;</code> — Get details`,
 
         `👤 <b>BENEFICIARIES</b>\n` +
         `/create_beneficiary ⚡ — Create new\n` +
@@ -414,6 +415,7 @@ async function handle(chatId, text) {
 
         `📑 <b>TRANSACTIONS</b>\n` +
         `/transactions — List all\n` +
+        `/tx_export — Export CSV\n` +
         `/tx_summary — Volume summary`,
 
         `🔗 <b>PAYMENT LINKS</b>\n` +
@@ -423,6 +425,7 @@ async function handle(chatId, text) {
         `/edit_pl ⚡ — Modify\n` +
         `/cancel_pl <code>&lt;id&gt;</code> — Cancel\n` +
         `/signal_pl <code>&lt;id&gt; &lt;txHash&gt;</code> — Signal deposit\n` +
+        `/pl_proof <code>&lt;id&gt;</code> ⚡ — Upload proof of payment\n` +
         `/pl_invoice <code>&lt;id&gt;</code> — Get invoice\n` +
         `/resend_pl_invoice <code>&lt;id&gt;</code> — Resend invoice\n` +
         `/deposits_review — Under review`,
@@ -434,6 +437,8 @@ async function handle(chatId, text) {
         `/edit_dr ⚡ — Modify\n` +
         `/cancel_dr <code>&lt;id&gt;</code> — Cancel\n` +
         `/signal_dr ⚡ — Signal deposit\n` +
+        `/dr_document <code>&lt;id&gt;</code> — Download document\n` +
+        `/dr_proof <code>&lt;id&gt;</code> ⚡ — Upload proof of payment\n` +
         `/dr_collections <code>&lt;id&gt;</code> — Collections`,
 
         `📧 <b>EMAILS</b>\n` +
@@ -662,6 +667,15 @@ async function handle(chatId, text) {
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
     }
 
+    case "/customer":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /customer &lt;id&gt;");
+      try {
+        const data = await api("GET", `/projects/${s.projectId}/customers/${arg}`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `👤 <b>Customer</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
     // ── Beneficiaries ────────────────────────────────────────────────────────
     case "/create_beneficiary":
       if (await needsAuth(chatId)) return;
@@ -874,6 +888,14 @@ async function handle(chatId, text) {
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
     }
 
+    case "/tx_export":
+      if (await needsAuth(chatId)) return;
+      try {
+        const data = await api("GET", `/projects/${s.projectId}/transactions/export`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `📥 <b>Transaction Export</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
     case "/tx_summary":
       if (await needsAuth(chatId)) return;
       try {
@@ -1013,6 +1035,14 @@ async function handle(chatId, text) {
         return send(chatId, `✅ <b>Invoice resent</b>\n\n${fmt(data.data)}`);
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
 
+    case "/pl_proof":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /pl_proof &lt;linkId&gt;");
+      return await startConvo(chatId, [
+        { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
+          execute: (s, d) => api("POST", `/projects/${s.projectId}/payment-links/${arg}/proof`, s.apiKey, { url: d.proofUrl }) },
+      ]);
+
     case "/deposits_review":
       if (await needsAuth(chatId)) return;
       try {
@@ -1086,6 +1116,23 @@ async function handle(chatId, text) {
         { key: "body", prompt: "Send signal body as JSON or 'empty':",
           transform: t => t === "empty" ? {} : parseJson(t) || {},
           execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${arg}/expected`, s.apiKey, d.body) },
+      ]);
+
+    case "/dr_document":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /dr_document &lt;id&gt;");
+      try {
+        const data = await api("GET", `/projects/${s.projectId}/deposit-requests/${arg}/document`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `📄 <b>Deposit Request Document</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
+    case "/dr_proof":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /dr_proof &lt;depositRequestId&gt;");
+      return await startConvo(chatId, [
+        { key: "proofUrl", prompt: "🔗 Enter the <b>proof URL</b> (link to uploaded proof image/document):",
+          execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${arg}/proof`, s.apiKey, { url: d.proofUrl }) },
       ]);
 
     case "/dr_collections":
