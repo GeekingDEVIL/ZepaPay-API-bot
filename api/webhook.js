@@ -9,16 +9,19 @@ const conversations = new Map();
 // ── Telegram helpers ─────────────────────────────────────────────────────────
 
 async function send(chatId, text) {
-  const chunks = [];
-  while (text.length > 0) {
-    chunks.push(text.slice(0, 4000));
-    text = text.slice(4000);
-  }
-  for (const chunk of chunks) {
+  if (text.length > 4000) text = text.slice(0, 3900) + "\n\n<i>… truncated</i>";
+  const resp = await fetch(`${TG}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+  });
+  const result = await resp.json();
+  if (!result.ok) {
+    console.error("TG send failed:", result.description);
     await fetch(`${TG}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text: chunk, parse_mode: "HTML" }),
+      body: JSON.stringify({ chat_id: chatId, text: text.replace(/<[^>]+>/g, "").slice(0, 4000) }),
     });
   }
 }
