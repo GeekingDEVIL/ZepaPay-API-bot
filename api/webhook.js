@@ -245,7 +245,7 @@ async function handleConvo(chatId, text) {
   // Resolve picker selection by number
   let value = text;
   let pickedChoice = null;
-  if (convo._choices && /^\d+$/.test(text.trim())) {
+  if (convo._choices && /^\d+\.?$/.test(text.trim())) {
     const idx = parseInt(text.trim()) - 1;
     if (idx >= 0 && idx < convo._choices.length) {
       pickedChoice = convo._choices[idx];
