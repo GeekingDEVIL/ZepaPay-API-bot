@@ -1268,16 +1268,38 @@ async function handle(chatId, text) {
     case "/upload_doc":
       if (await needsAuth(chatId)) return;
       return await startConvo(chatId, [
-        { key: "resourceType", prompt: "📂 <b>Select resource type:</b>\n\n" +
-          "1. payout_invoice\n2. settlement_receipt\n3. settlement_invoice\n4. bank_account\n" +
-          "5. beneficiary_id_document\n6. approval\n7. project" },
-        { key: "resourceId", prompt: "🔗 Enter the <b>resource ID</b> (UUID of the record):" },
-        { key: "fileUrl", prompt: "📎 <b>Send a photo/document</b> or paste a URL:", file: true,
-          execute: async (s, d) => {
-            const typeMap = { "1": "payout_invoice", "2": "settlement_receipt", "3": "settlement_invoice", "4": "bank_account", "5": "beneficiary_id_document", "6": "approval", "7": "project" };
-            const resType = typeMap[d.resourceType] || d.resourceType;
-            return uploadProof(resType, d.resourceId, s.apiKey, d.fileUrl);
+        { key: "resourceType", prompt: "📂 <b>What type of document?</b>",
+          picker: async () => [
+            { label: "📄 Payout Invoice", value: "payout_invoice" },
+            { label: "🧾 Settlement Receipt", value: "settlement_receipt" },
+            { label: "🧾 Settlement Invoice", value: "settlement_invoice" },
+            { label: "🏦 Bank Account", value: "bank_account" },
+            { label: "🪪 Beneficiary ID Document", value: "beneficiary_id_document" },
+            { label: "✅ Approval", value: "approval" },
+            { label: "📁 Project", value: "project" },
+            { label: "💰 Deposit Proof", value: "fiat_deposit_proof" },
+            { label: "🔗 Payment Link Proof", value: "payment_link_proof" },
+          ] },
+        { key: "resourceId", prompt: (d) => `🔗 <b>Select the ${d.resourceType.replace(/_/g, " ")}:</b>`,
+          picker: async (s, d) => {
+            const rt = d.resourceType;
+            const pid = s.projectId;
+            const ak = s.apiKey;
+            if (rt === "payout_invoice") return (await pickers.payouts(s)) || null;
+            if (rt === "settlement_receipt" || rt === "settlement_invoice") return (await pickers.settlements(s)) || null;
+            if (rt === "bank_account") return (await pickers.bankAccounts(s)) || null;
+            if (rt === "beneficiary_id_document") return (await pickers.beneficiaries(s)) || null;
+            if (rt === "fiat_deposit_proof") return (await pickers.depositRequests(s)) || null;
+            if (rt === "payment_link_proof") return (await pickers.paymentLinks(s)) || null;
+            if (rt === "approval") {
+              const data = await api("GET", `/projects/${pid}/payouts?limit=20&status=pending_approval`, ak);
+              if (!data.success || !data.data.payouts?.length) return null;
+              return data.data.payouts.map(p => ({ label: `🕐 ${p.amountFormatted || p.amount || p.id}`, value: p.id }));
+            }
+            return null;
           } },
+        { key: "fileUrl", prompt: "📎 <b>Send a photo/document</b> or paste a URL:", file: true,
+          execute: async (s, d) => uploadProof(d.resourceType, d.resourceId, s.apiKey, d.fileUrl) },
       ]);
 
     case "/documents": {
@@ -1313,24 +1335,43 @@ async function handle(chatId, text) {
     case "/doc_urls":
       if (await needsAuth(chatId)) return;
       return await startConvo(chatId, [
-        { key: "resourceType", prompt: "📂 <b>Select resource type:</b>\n\n" +
-          "1. payout_invoice\n2. settlement_receipt\n3. settlement_invoice\n4. bank_account\n" +
-          "5. beneficiary_id_document\n6. approval\n7. project\n8. fiat_deposit_proof\n9. payment_link_proof" },
-        { key: "resourceId", prompt: "🔗 Enter the <b>resource ID</b> (UUID):" },
-        { key: "fileName", prompt: "📝 Enter <b>file name</b> (e.g. invoice.pdf):" },
-        { key: "contentType", prompt: "📎 Enter <b>content type</b>:\n\n1. application/pdf\n2. image/jpeg\n3. image/png\n4. image/webp" },
-        { key: "sizeBytes", prompt: "📏 Enter <b>file size in bytes</b>:",
-          execute: async (s, d) => {
-            const typeMap = { "1": "payout_invoice", "2": "settlement_receipt", "3": "settlement_invoice", "4": "bank_account", "5": "beneficiary_id_document", "6": "approval", "7": "project", "8": "fiat_deposit_proof", "9": "payment_link_proof" };
-            const ctMap = { "1": "application/pdf", "2": "image/jpeg", "3": "image/png", "4": "image/webp" };
-            const resType = typeMap[d.resourceType] || d.resourceType;
-            const ct = ctMap[d.contentType] || d.contentType;
-            return api("POST", "/documents/upload-urls", s.apiKey, {
-              resourceType: resType,
-              resourceId: d.resourceId,
-              files: [{ fileName: d.fileName, contentType: ct, sizeBytes: parseInt(d.sizeBytes) }],
-            });
+        { key: "resourceType", prompt: "📂 <b>What type of document?</b>",
+          picker: async () => [
+            { label: "📄 Payout Invoice", value: "payout_invoice" },
+            { label: "🧾 Settlement Receipt", value: "settlement_receipt" },
+            { label: "🧾 Settlement Invoice", value: "settlement_invoice" },
+            { label: "🏦 Bank Account", value: "bank_account" },
+            { label: "🪪 Beneficiary ID Document", value: "beneficiary_id_document" },
+            { label: "✅ Approval", value: "approval" },
+            { label: "📁 Project", value: "project" },
+            { label: "💰 Deposit Proof", value: "fiat_deposit_proof" },
+            { label: "🔗 Payment Link Proof", value: "payment_link_proof" },
+          ] },
+        { key: "resourceId", prompt: (d) => `🔗 <b>Select the ${d.resourceType.replace(/_/g, " ")}:</b>`,
+          picker: async (s, d) => {
+            const rt = d.resourceType;
+            if (rt === "payout_invoice") return (await pickers.payouts(s)) || null;
+            if (rt === "settlement_receipt" || rt === "settlement_invoice") return (await pickers.settlements(s)) || null;
+            if (rt === "bank_account") return (await pickers.bankAccounts(s)) || null;
+            if (rt === "beneficiary_id_document") return (await pickers.beneficiaries(s)) || null;
+            if (rt === "fiat_deposit_proof") return (await pickers.depositRequests(s)) || null;
+            if (rt === "payment_link_proof") return (await pickers.paymentLinks(s)) || null;
+            return null;
           } },
+        { key: "fileName", prompt: "📝 Enter <b>file name</b> (e.g. invoice.pdf):" },
+        { key: "contentType", prompt: "📎 <b>File type:</b>",
+          picker: async () => [
+            { label: "📄 PDF", value: "application/pdf" },
+            { label: "🖼 JPEG", value: "image/jpeg" },
+            { label: "🖼 PNG", value: "image/png" },
+            { label: "🖼 WebP", value: "image/webp" },
+          ] },
+        { key: "sizeBytes", prompt: "📏 Enter <b>file size in bytes</b>:",
+          execute: async (s, d) => api("POST", "/documents/upload-urls", s.apiKey, {
+            resourceType: d.resourceType,
+            resourceId: d.resourceId,
+            files: [{ fileName: d.fileName, contentType: d.contentType, sizeBytes: parseInt(d.sizeBytes) }],
+          }) },
       ]);
 
     case "/doc_confirm":
