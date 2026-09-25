@@ -26,24 +26,33 @@ async function send(chatId, text) {
   }
 }
 
-// ── File upload (direct API, bypasses proxy) ────────────────────────────────
+// ── File upload (3-step documents flow via proxy + storage PUT) ──────────────
 
-const API_BASE = PROXY.replace("/developer-docs/proxy", "/v1");
-
-async function uploadProof(path, apiKey, fileUrl) {
+async function uploadProof(resourceType, resourceId, apiKey, fileUrl) {
   const fileResp = await fetch(fileUrl);
   if (!fileResp.ok) return { success: false, error: { code: "FILE_DOWNLOAD_FAILED", userMessage: "Could not download the file from Telegram." } };
-  const blob = await fileResp.blob();
-  const fileName = fileUrl.split("/").pop() || "proof";
-  const form = new FormData();
-  form.append("file", blob, fileName);
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "API-Key": apiKey },
-    body: form,
+  const buf = Buffer.from(await fileResp.arrayBuffer());
+  const fileName = fileUrl.split("/").pop() || "proof.pdf";
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  const ctMap = { pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+  const contentType = ctMap[ext] || "application/pdf";
+
+  const step1 = await api("POST", "/documents/upload-urls", apiKey, {
+    resourceType, resourceId,
+    files: [{ fileName, contentType, sizeBytes: buf.length }],
   });
-  const data = await res.json();
-  return data;
+  if (!step1.success) return step1;
+  const doc = step1.data.documents[0];
+
+  const putResp = await fetch(doc.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: buf,
+  });
+  if (!putResp.ok) return { success: false, error: { code: "STORAGE_UPLOAD_FAILED", userMessage: `Upload to storage failed (${putResp.status}).` } };
+
+  const step3 = await api("POST", `/documents/${doc.documentId}/confirm`, apiKey);
+  return step3;
 }
 
 // ── ZepaPay proxy ────────────────────────────────────────────────────────────
@@ -472,7 +481,13 @@ async function handle(chatId, text) {
         `/email_types — Available types\n` +
         `/send_email ⚡ — Send email`,
 
+        `📂 <b>DOCUMENTS</b>\n` +
+        `/upload_doc ⚡ — Upload a document\n` +
+        `/documents <code>&lt;type&gt; &lt;resourceId&gt;</code> — List docs\n` +
+        `/document <code>&lt;id&gt;</code> — Get document details`,
+
         `🔧 <b>POWER USER</b>\n` +
+        `/all_ben_banks — All beneficiary bank accounts\n` +
         `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n\n` +
         `<i>💡 Tip: Most list commands accept</i> <code>limit offset</code>\n` +
         `<i>🚫 /cancel — Abort any interactive flow</i>`,
@@ -1105,7 +1120,7 @@ async function handle(chatId, text) {
             }
           } },
         { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
-          execute: (s, d) => uploadProof(`/projects/${s.projectId}/payment-links/${d.linkId}/proof`, s.apiKey, d.proofUrl) },
+          execute: (s, d) => uploadProof("payment_link_proof", d.linkId, s.apiKey, d.proofUrl) },
       ]);
 
     case "/deposits_review":
@@ -1212,7 +1227,7 @@ async function handle(chatId, text) {
             }
           } },
         { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
-          execute: (s, d) => uploadProof(`/projects/${s.projectId}/deposit-requests/${d.drId}/proof`, s.apiKey, d.proofUrl) },
+          execute: (s, d) => uploadProof("fiat_deposit_proof", d.drId, s.apiKey, d.proofUrl) },
       ]);
 
     case "/dr_collections":
@@ -1245,6 +1260,61 @@ async function handle(chatId, text) {
             return api("POST", `/projects/${s.projectId}/emails/dispatch`, s.apiKey, body);
           } },
       ]);
+
+    // ── Documents ─────────────────────────────────────────────────────────────
+    case "/upload_doc":
+      if (await needsAuth(chatId)) return;
+      return await startConvo(chatId, [
+        { key: "resourceType", prompt: "📂 <b>Select resource type:</b>\n\n" +
+          "1. payout_invoice\n2. settlement_receipt\n3. settlement_invoice\n4. bank_account\n" +
+          "5. beneficiary_id_document\n6. approval\n7. project" },
+        { key: "resourceId", prompt: "🔗 Enter the <b>resource ID</b> (UUID of the record):" },
+        { key: "fileUrl", prompt: "📎 <b>Send a photo/document</b> or paste a URL:", file: true,
+          execute: async (s, d) => {
+            const typeMap = { "1": "payout_invoice", "2": "settlement_receipt", "3": "settlement_invoice", "4": "bank_account", "5": "beneficiary_id_document", "6": "approval", "7": "project" };
+            const resType = typeMap[d.resourceType] || d.resourceType;
+            return uploadProof(resType, d.resourceId, s.apiKey, d.fileUrl);
+          } },
+      ]);
+
+    case "/documents": {
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /documents &lt;resourceType&gt; &lt;resourceId&gt;\n\nTypes: payout_invoice, settlement_receipt, bank_account, beneficiary_id_document, approval, project, fiat_deposit_proof, payment_link_proof");
+      try {
+        const data = await api("GET", `/documents?resourceType=${args[0]}&resourceId=${args[1]}`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        const docs = data.data.documents || [];
+        if (!docs.length) return send(chatId, "No documents found.");
+        let msg = `📂 <b>Documents</b> (${docs.length})\n\n`;
+        docs.forEach((d, i) => {
+          msg += `${i + 1}. <b>${d.fileName || "—"}</b>\n` +
+            `   Type: ${d.contentType || "—"} | ${d.sizeBytes ? Math.round(d.sizeBytes / 1024) + " KB" : "—"}\n` +
+            `   Status: ${d.status || "—"}\n` +
+            `   ID: <code>${d.id}</code>\n`;
+          if (d.downloadUrl) msg += `   <a href="${d.downloadUrl}">Download</a>\n`;
+          msg += "\n";
+        });
+        return send(chatId, msg);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+    }
+
+    case "/document":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /document &lt;documentId&gt;");
+      try {
+        const data = await api("GET", `/documents/${arg}`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `📄 <b>Document</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
+    // ── All beneficiary bank accounts ────────────────────────────────────────
+    case "/all_ben_banks":
+      if (await needsAuth(chatId)) return;
+      try {
+        const data = await api("GET", `/projects/${s.projectId}/beneficiaries/bank-accounts`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `🏦 <b>All Beneficiary Bank Accounts</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
 
     // ── Raw ──────────────────────────────────────────────────────────────────
     case "/raw":
