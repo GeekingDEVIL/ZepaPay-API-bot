@@ -482,7 +482,10 @@ async function handle(chatId, text) {
         `/send_email ⚡ — Send email`,
 
         `📂 <b>DOCUMENTS</b>\n` +
-        `/upload_doc ⚡ — Upload a document\n` +
+        `/upload_doc ⚡ — Upload a document (full flow)\n` +
+        `/doc_urls ⚡ — Step 1: Get upload URLs\n` +
+        `/doc_confirm <code>&lt;id&gt;</code> — Step 3: Confirm upload\n` +
+        `/doc_failed <code>&lt;id&gt;</code> — Report failed upload\n` +
         `/documents <code>&lt;type&gt; &lt;resourceId&gt;</code> — List docs\n` +
         `/document <code>&lt;id&gt;</code> — Get document details`,
 
@@ -1306,6 +1309,48 @@ async function handle(chatId, text) {
         if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
         return send(chatId, `📄 <b>Document</b>\n\n${fmt(data.data)}`);
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
+    case "/doc_urls":
+      if (await needsAuth(chatId)) return;
+      return await startConvo(chatId, [
+        { key: "resourceType", prompt: "📂 <b>Select resource type:</b>\n\n" +
+          "1. payout_invoice\n2. settlement_receipt\n3. settlement_invoice\n4. bank_account\n" +
+          "5. beneficiary_id_document\n6. approval\n7. project\n8. fiat_deposit_proof\n9. payment_link_proof" },
+        { key: "resourceId", prompt: "🔗 Enter the <b>resource ID</b> (UUID):" },
+        { key: "fileName", prompt: "📝 Enter <b>file name</b> (e.g. invoice.pdf):" },
+        { key: "contentType", prompt: "📎 Enter <b>content type</b>:\n\n1. application/pdf\n2. image/jpeg\n3. image/png\n4. image/webp" },
+        { key: "sizeBytes", prompt: "📏 Enter <b>file size in bytes</b>:",
+          execute: async (s, d) => {
+            const typeMap = { "1": "payout_invoice", "2": "settlement_receipt", "3": "settlement_invoice", "4": "bank_account", "5": "beneficiary_id_document", "6": "approval", "7": "project", "8": "fiat_deposit_proof", "9": "payment_link_proof" };
+            const ctMap = { "1": "application/pdf", "2": "image/jpeg", "3": "image/png", "4": "image/webp" };
+            const resType = typeMap[d.resourceType] || d.resourceType;
+            const ct = ctMap[d.contentType] || d.contentType;
+            return api("POST", "/documents/upload-urls", s.apiKey, {
+              resourceType: resType,
+              resourceId: d.resourceId,
+              files: [{ fileName: d.fileName, contentType: ct, sizeBytes: parseInt(d.sizeBytes) }],
+            });
+          } },
+      ]);
+
+    case "/doc_confirm":
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /doc_confirm &lt;documentId&gt;");
+      try {
+        const data = await api("POST", `/documents/${arg}/confirm`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `✅ <b>Document confirmed</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
+    case "/doc_failed": {
+      if (await needsAuth(chatId)) return;
+      if (!arg) return send(chatId, "Usage: /doc_failed &lt;documentId&gt;");
+      try {
+        const data = await api("POST", `/documents/${arg}/failed`, s.apiKey);
+        if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
+        return send(chatId, `⚠️ <b>Document marked as failed</b>\n\n${fmt(data.data)}`);
+      } catch (e) { return send(chatId, `❌ ${e.message}`); }
+    }
 
     // ── All beneficiary bank accounts ────────────────────────────────────────
     case "/all_ben_banks":
