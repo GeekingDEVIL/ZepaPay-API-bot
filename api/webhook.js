@@ -26,6 +26,26 @@ async function send(chatId, text) {
   }
 }
 
+// ── File upload (direct API, bypasses proxy) ────────────────────────────────
+
+const API_BASE = PROXY.replace("/developer-docs/proxy", "/v1");
+
+async function uploadProof(path, apiKey, fileUrl) {
+  const fileResp = await fetch(fileUrl);
+  if (!fileResp.ok) return { success: false, error: { code: "FILE_DOWNLOAD_FAILED", userMessage: "Could not download the file from Telegram." } };
+  const blob = await fileResp.blob();
+  const fileName = fileUrl.split("/").pop() || "proof";
+  const form = new FormData();
+  form.append("file", blob, fileName);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "API-Key": apiKey },
+    body: form,
+  });
+  const data = await res.json();
+  return data;
+}
+
 // ── ZepaPay proxy ────────────────────────────────────────────────────────────
 
 async function api(method, path, apiKey, body) {
@@ -1085,7 +1105,7 @@ async function handle(chatId, text) {
             }
           } },
         { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
-          execute: (s, d) => api("POST", `/projects/${s.projectId}/payment-links/${d.linkId}/proof`, s.apiKey, { url: d.proofUrl }) },
+          execute: (s, d) => uploadProof(`/projects/${s.projectId}/payment-links/${d.linkId}/proof`, s.apiKey, d.proofUrl) },
       ]);
 
     case "/deposits_review":
@@ -1192,7 +1212,7 @@ async function handle(chatId, text) {
             }
           } },
         { key: "proofUrl", prompt: "📎 <b>Send a photo/document</b> of the proof of payment, or paste a URL:", file: true,
-          execute: (s, d) => api("POST", `/projects/${s.projectId}/deposit-requests/${d.drId}/proof`, s.apiKey, { url: d.proofUrl }) },
+          execute: (s, d) => uploadProof(`/projects/${s.projectId}/deposit-requests/${d.drId}/proof`, s.apiKey, d.proofUrl) },
       ]);
 
     case "/dr_collections":
