@@ -915,7 +915,7 @@ async function handle(chatId, text) {
           execute: (s, d) => {
             if (d.payoutType === "crypto") {
               const body = { projectId: s.projectId, beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId, amount: d.amount };
-              return api("POST", `/crypto-withdrawals/quote`, s.apiKey, body);
+              return api("POST", `/projects/${s.projectId}/crypto-withdrawals/quote`, s.apiKey, body);
             }
             const body = { bankAccountId: d.bankAccountId };
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
@@ -944,7 +944,7 @@ async function handle(chatId, text) {
               const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
                 beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId,
                 amount: d.amount, idempotencyKey: key };
-              return api("POST", `/crypto-withdrawals`, s.apiKey, body);
+              return api("POST", `/projects/${s.projectId}/crypto-withdrawals`, s.apiKey, body);
             }
             const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
               bankAccountId: d.bankAccountId, amount: d.amount, idempotencyKey: key };

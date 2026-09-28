@@ -843,7 +843,7 @@ bot.onText(/\/quote_payout/, (msg) => {
       prompt: "Enter <b>amount</b> (net desired):\n<i>Fiat: prefix 'gross:' for grossAmount</i>",
       execute: (sess, d) => {
         if (d.payoutType === "crypto") {
-          return api("POST", `/crypto-withdrawals/quote`, sess.apiKey, {
+          return api("POST", `/projects/${sess.projectId}/crypto-withdrawals/quote`, sess.apiKey, {
             projectId: sess.projectId, beneficiaryWalletId: d.beneficiaryWalletId,
             currencyId: d.currencyId, amount: d.amount });
         }
@@ -876,7 +876,7 @@ bot.onText(/\/create_payout/, (msg) => {
       execute: (sess, d) => {
         const key = `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         if (d.payoutType === "crypto") {
-          return api("POST", `/crypto-withdrawals`, sess.apiKey, {
+          return api("POST", `/projects/${sess.projectId}/crypto-withdrawals`, sess.apiKey, {
             projectId: sess.projectId, beneficiaryId: d.beneficiaryId,
             beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId,
             amount: d.amount, idempotencyKey: key });
