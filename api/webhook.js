@@ -272,6 +272,11 @@ async function showStepPrompt(chatId, step, data) {
         await send(chatId, `${header}\n\n${list}\n\n<i>Reply with a number, or type a value directly.</i>`);
         return;
       }
+      if (step.pickerRequired) {
+        conversations.delete(chatId);
+        await send(chatId, step.pickerEmpty || "❌ No options available. Please add one first and try again.");
+        return "abort";
+      }
     } catch (e) {
       console.error("Picker error:", e.message);
     }
@@ -325,7 +330,7 @@ async function handleConvo(chatId, text) {
       convo.current++;
       continue;
     }
-    await showStepPrompt(chatId, next, convo.data);
+    if (await showStepPrompt(chatId, next, convo.data) === "abort") return true;
     return true;
   }
 
@@ -905,9 +910,11 @@ async function handle(chatId, text) {
         { key: "payoutType", prompt: "⚠️ <b>Moves real funds!</b>\n\n💸 <b>Payout type:</b>", picker: pickers.payoutType },
         { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
         { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks,
-          skipIf: d => d.payoutType === "crypto" },
+          skipIf: d => d.payoutType === "crypto",
+          pickerRequired: true, pickerEmpty: "❌ This beneficiary has no bank accounts.\n\nAdd a bank account first in the ZepaPay dashboard, then try again." },
         { key: "walletId", prompt: "🪙 <b>Select beneficiary's wallet:</b>", picker: pickers.benWallets,
-          skipIf: d => d.payoutType === "fiat" },
+          skipIf: d => d.payoutType === "fiat",
+          pickerRequired: true, pickerEmpty: "❌ This beneficiary has no wallets.\n\nAdd a wallet first in the ZepaPay dashboard, then try again." },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
         { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):",
           execute: (s, d) => {
