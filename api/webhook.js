@@ -169,6 +169,22 @@ const pickers = {
       value: b.id,
     }));
   },
+  benWallets: async (s, data) => {
+    const benId = data.beneficiaryId;
+    if (!benId || benId === "skip") return null;
+    const res = await api("GET", `/projects/${s.projectId}/beneficiaries/${benId}/wallets`, s.apiKey);
+    if (!res.success) return null;
+    const list = res.data.wallets || (Array.isArray(res.data) ? res.data : []);
+    if (!list.length) return null;
+    return list.map(w => ({
+      label: `${w.alias || w.address?.slice(0, 10) + "..." || w.id} — ${w.networkCode || w.network?.code || ""}`,
+      value: w.id,
+    }));
+  },
+  payoutType: async () => [
+    { label: "🏦 Fiat (Bank Transfer)", value: "fiat" },
+    { label: "🪙 Crypto / Token", value: "crypto" },
+  ],
   settlements: async (s) => {
     const data = await api("GET", `/projects/${s.projectId}/settlements?limit=20`, s.apiKey);
     if (!data.success || !data.data.settlements?.length) return null;
@@ -868,10 +884,16 @@ async function handle(chatId, text) {
     case "/quote_payout":
       if (await needsAuth(chatId)) return;
       return await startConvo(chatId, [
-        { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts },
+        { key: "payoutType", prompt: "💸 <b>Payout type:</b>", picker: pickers.payoutType },
+        { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts,
+          skipIf: d => d.payoutType === "crypto" },
+        { key: "walletId", prompt: "🪙 <b>Select wallet:</b>\n<i>Enter a wallet ID (UUID)</i>",
+          skipIf: d => d.payoutType === "fiat" },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>",
           execute: (s, d) => {
-            const body = { bankAccountId: d.bankAccountId };
+            const body = {};
+            if (d.payoutType === "crypto") body.walletId = d.walletId;
+            else body.bankAccountId = d.bankAccountId;
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
             return api("POST", `/projects/${s.projectId}/payouts/quote`, s.apiKey, body);
           } },
@@ -880,13 +902,19 @@ async function handle(chatId, text) {
     case "/create_payout":
       if (await needsAuth(chatId)) return;
       return await startConvo(chatId, [
-        { key: "beneficiaryId", prompt: "⚠️ <b>Moves real funds!</b>\n\n👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
-        { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks },
+        { key: "payoutType", prompt: "⚠️ <b>Moves real funds!</b>\n\n💸 <b>Payout type:</b>", picker: pickers.payoutType },
+        { key: "beneficiaryId", prompt: "👤 <b>Select beneficiary:</b>", picker: pickers.beneficiaries },
+        { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks,
+          skipIf: d => d.payoutType === "crypto" },
+        { key: "walletId", prompt: "🪙 <b>Select beneficiary's wallet:</b>", picker: pickers.benWallets,
+          skipIf: d => d.payoutType === "fiat" },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
         { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):",
           execute: (s, d) => {
-            const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId, bankAccountId: d.bankAccountId,
+            const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
               amount: d.amount, idempotencyKey: `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
+            if (d.payoutType === "crypto") body.walletId = d.walletId;
+            else body.bankAccountId = d.bankAccountId;
             if (d.remarks !== "skip") body.remarks = d.remarks;
             return api("POST", `/projects/${s.projectId}/payouts`, s.apiKey, body);
           } },
