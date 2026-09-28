@@ -1,5 +1,9 @@
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const PROXY = process.env.ZEPA_PROXY_URL;
+const BOT_ENV = (process.env.BOT_ENV || "production").toLowerCase();
+const DOCS_URL = process.env.DOCS_URL || "https://app.zepapay.com/developer-docs";
+const IS_STAGING = BOT_ENV === "staging";
+const ENV_BADGE = IS_STAGING ? " [STAGING]" : "";
 const TG = `https://api.telegram.org/bot${TOKEN}`;
 
 // Survives across warm invocations; lost on cold start — user re-sends key
@@ -383,7 +387,7 @@ async function handle(chatId, text) {
     case "/setkey":
       sessions.delete(chatId);
       conversations.delete(chatId);
-      return send(chatId, `🔑 <b>ZepaPay API Tester</b>\n\nSend me your project API key to get started.\nFormat: <code>sbk_xxxxxxxx</code>\n\nYou can get your key from the ZepaPay dashboard under <b>Project → API Keys</b>.\nYour key is stored only in memory for this session.`);
+      return send(chatId, `🔑 <b>ZepaPay API Tester${ENV_BADGE}</b>\n\nSend me your project API key to get started.\nFormat: <code>sbk_xxxxxxxx</code>\n\nYou can get your key from the ZepaPay dashboard under <b>Project → API Keys</b>.\nYour key is stored only in memory for this session.${IS_STAGING ? "\n\n⚠️ <i>This bot is connected to the <b>staging</b> environment.</i>" : ""}`);
 
     case "/logout":
       sessions.delete(chatId);
@@ -392,7 +396,7 @@ async function handle(chatId, text) {
 
     case "/help": {
       const sections = [
-        `🔑 <b>ZepaPay API Tester</b>\n\n<i>Test every ZepaPay endpoint right from Telegram.\nCommands marked ⚡ are interactive — the bot will walk you through each field.</i>`,
+        `🔑 <b>ZepaPay API Tester${ENV_BADGE}</b>\n\n<i>Test every ZepaPay endpoint right from Telegram.\nCommands marked ⚡ are interactive — the bot will walk you through each field.</i>${IS_STAGING ? "\n\n⚠️ <b>STAGING ENVIRONMENT</b>" : ""}`,
 
         `🔐 <b>SESSION</b>\n` +
         `/start · /setkey — Connect with API key\n` +
@@ -491,7 +495,8 @@ async function handle(chatId, text) {
 
         `🔧 <b>POWER USER</b>\n` +
         `/all_ben_banks — All beneficiary bank accounts\n` +
-        `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n\n` +
+        `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n` +
+        `/docs — Developer documentation\n\n` +
         `<i>💡 Tip: Most list commands accept</i> <code>limit offset</code>\n` +
         `<i>🚫 /cancel — Abort any interactive flow</i>`,
       ];
@@ -1401,6 +1406,10 @@ async function handle(chatId, text) {
         if (!data.success) return send(chatId, `❌ ${data.error?.code}: ${data.error?.userMessage}`);
         return send(chatId, `🏦 <b>All Beneficiary Bank Accounts</b>\n\n${fmt(data.data)}`);
       } catch (e) { return send(chatId, `❌ ${e.message}`); }
+
+    // ── Docs ─────────────────────────────────────────────────────────────────
+    case "/docs":
+      return send(chatId, `📚 <b>Developer Documentation${ENV_BADGE}</b>\n\n<a href="${DOCS_URL}">${DOCS_URL}</a>`);
 
     // ── Raw ──────────────────────────────────────────────────────────────────
     case "/raw":

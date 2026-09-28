@@ -3,6 +3,10 @@ const TelegramBot = require("node-telegram-bot-api");
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 const PROXY = process.env.ZEPA_PROXY_URL;
+const BOT_ENV = (process.env.BOT_ENV || "production").toLowerCase();
+const DOCS_URL = process.env.DOCS_URL || "https://app.zepapay.com/developer-docs";
+const IS_STAGING = BOT_ENV === "staging";
+const ENV_BADGE = IS_STAGING ? " [STAGING]" : "";
 
 // Per-chat session: { apiKey, projectId }
 const sessions = new Map();
@@ -105,7 +109,7 @@ bot.onText(/\/start/, (msg) => {
   sessions.delete(chatId);
   reply(
     chatId,
-    `🔑 <b>ZepaPay API Tester</b>\n\nSend me your project API key to get started.\nFormat: <code>sbk_xxxxxxxx</code>\n\nYou can get your key from the ZepaPay dashboard under <b>Project → API Keys</b>.\nYour key is stored only in memory for this session.`
+    `🔑 <b>ZepaPay API Tester${ENV_BADGE}</b>\n\nSend me your project API key to get started.\nFormat: <code>sbk_xxxxxxxx</code>\n\nYou can get your key from the ZepaPay dashboard under <b>Project → API Keys</b>.\nYour key is stored only in memory for this session.${IS_STAGING ? "\n\n⚠️ <i>This bot is connected to the <b>staging</b> environment.</i>" : ""}`
   );
 });
 
@@ -156,7 +160,7 @@ bot.on("message", async (msg) => {
 bot.onText(/\/help/, async (msg) => {
   const chatId = msg.chat.id;
   const sections = [
-    `🔑 <b>ZepaPay API Tester</b>\n\n<i>Test every ZepaPay endpoint right from Telegram.\nCommands marked ⚡ are interactive — the bot will walk you through each field.</i>`,
+    `🔑 <b>ZepaPay API Tester${ENV_BADGE}</b>\n\n<i>Test every ZepaPay endpoint right from Telegram.\nCommands marked ⚡ are interactive — the bot will walk you through each field.</i>${IS_STAGING ? "\n\n⚠️ <b>STAGING ENVIRONMENT</b>" : ""}`,
 
     `🔐 <b>SESSION</b>\n` +
     `/start · /setkey — Connect with API key\n` +
@@ -241,7 +245,8 @@ bot.onText(/\/help/, async (msg) => {
     `/send_email ⚡ — Send email`,
 
     `🔧 <b>POWER USER</b>\n` +
-    `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n\n` +
+    `/raw <code>&lt;METHOD&gt; &lt;path&gt; [json]</code> — Raw API call\n` +
+    `/docs — Developer documentation\n\n` +
     `<i>💡 Tip: Most list commands accept</i> <code>limit offset</code>\n` +
     `<i>🚫 /cancel — Abort any interactive flow</i>`,
   ];
@@ -1255,6 +1260,12 @@ bot.onText(/\/send_email/, (msg) => {
   ]);
 });
 
+// ── Docs ────────────────────────────────────────────────────────────────────
+
+bot.onText(/\/docs/, (msg) => {
+  reply(msg.chat.id, `📚 <b>Developer Documentation${ENV_BADGE}</b>\n\n<a href="${DOCS_URL}">${DOCS_URL}</a>`);
+});
+
 // ── Raw API call (power-user) ────────────────────────────────────────────────
 
 bot.onText(/\/raw\s+(\S+)\s+(\S+)(?:\s+(.+))?/, async (msg, match) => {
@@ -1290,5 +1301,5 @@ bot.onText(/\/cancel/, (msg) => {
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 
-console.log("🤖 ZepaPay Telegram Bot is running...");
+console.log(`🤖 ZepaPay Telegram Bot is running... [${BOT_ENV}]`);
 console.log("Open your bot in Telegram and send /start");
