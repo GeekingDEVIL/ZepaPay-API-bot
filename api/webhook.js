@@ -186,6 +186,20 @@ const pickers = {
     { label: "🏦 Fiat (Bank Transfer)", value: "fiat" },
     { label: "🪙 Crypto / Token", value: "crypto" },
   ],
+  cryptoCurrencies: async (s) => {
+    const data = await api("GET", `/currencies?limit=50`, s.apiKey);
+    if (!data.success || !data.data.currencies?.length) return null;
+    const tokens = data.data.currencies.filter(c => c.type === "token");
+    if (!tokens.length) return null;
+    const seen = new Set();
+    const deduped = [];
+    for (const c of tokens) {
+      if (seen.has(c.symbol)) continue;
+      seen.add(c.symbol);
+      deduped.push({ label: `🪙 ${c.symbol} — ${c.name}`, value: c.id });
+    }
+    return deduped;
+  },
   settlements: async (s) => {
     const data = await api("GET", `/projects/${s.projectId}/settlements?limit=20`, s.apiKey);
     if (!data.success || !data.data.settlements?.length) return null;
@@ -893,13 +907,17 @@ async function handle(chatId, text) {
         { key: "payoutType", prompt: "💸 <b>Payout type:</b>", picker: pickers.payoutType },
         { key: "bankAccountId", prompt: "🏦 <b>Select bank account:</b>", picker: pickers.bankAccounts,
           skipIf: d => d.payoutType === "crypto" },
-        { key: "walletId", prompt: "🪙 <b>Select wallet:</b>\n<i>Enter a wallet ID (UUID)</i>",
+        { key: "beneficiaryWalletId", prompt: "🪙 <b>Enter wallet ID</b> (UUID):",
           skipIf: d => d.payoutType === "fiat" },
-        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount</i>",
+        { key: "currencyId", prompt: "🪙 <b>Select token:</b>", picker: pickers.cryptoCurrencies,
+          skipIf: d => d.payoutType === "fiat" },
+        { key: "amount", prompt: "💰 Enter <b>amount</b> (net):\n<i>Prefix 'gross:' for grossAmount (fiat only)</i>",
           execute: (s, d) => {
-            const body = {};
-            if (d.payoutType === "crypto") body.walletId = d.walletId;
-            else body.bankAccountId = d.bankAccountId;
+            if (d.payoutType === "crypto") {
+              const body = { projectId: s.projectId, beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId, amount: d.amount };
+              return api("POST", `/crypto-withdrawals/quote`, s.apiKey, body);
+            }
+            const body = { bankAccountId: d.bankAccountId };
             if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6); else body.amount = d.amount;
             return api("POST", `/projects/${s.projectId}/payouts/quote`, s.apiKey, body);
           } },
@@ -913,16 +931,23 @@ async function handle(chatId, text) {
         { key: "bankAccountId", prompt: "🏦 <b>Select beneficiary's bank account:</b>", picker: pickers.benBanks,
           skipIf: d => d.payoutType === "crypto",
           pickerRequired: true, pickerEmpty: "❌ This beneficiary has no bank accounts.\n\nAdd a bank account first in the ZepaPay dashboard, then try again." },
-        { key: "walletId", prompt: "🪙 <b>Select beneficiary's wallet:</b>", picker: pickers.benWallets,
+        { key: "beneficiaryWalletId", prompt: "🪙 <b>Select beneficiary's wallet:</b>", picker: pickers.benWallets,
           skipIf: d => d.payoutType === "fiat",
           pickerRequired: true, pickerEmpty: "❌ This beneficiary has no wallets.\n\nAdd a wallet first in the ZepaPay dashboard, then try again." },
+        { key: "currencyId", prompt: "🪙 <b>Select token:</b>", picker: pickers.cryptoCurrencies,
+          skipIf: d => d.payoutType === "fiat" },
         { key: "amount", prompt: "💰 Enter <b>amount</b> (net):" },
         { key: "remarks", prompt: "📝 Enter <b>remarks</b> (or 'skip'):",
           execute: (s, d) => {
+            const key = `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            if (d.payoutType === "crypto") {
+              const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
+                beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId,
+                amount: d.amount, idempotencyKey: key };
+              return api("POST", `/crypto-withdrawals`, s.apiKey, body);
+            }
             const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
-              amount: d.amount, idempotencyKey: `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-            if (d.payoutType === "crypto") body.walletId = d.walletId;
-            else body.bankAccountId = d.bankAccountId;
+              bankAccountId: d.bankAccountId, amount: d.amount, idempotencyKey: key };
             if (d.remarks !== "skip") body.remarks = d.remarks;
             return api("POST", `/projects/${s.projectId}/payouts`, s.apiKey, body);
           } },

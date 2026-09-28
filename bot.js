@@ -834,15 +834,20 @@ bot.onText(/\/quote_payout/, (msg) => {
       transform: (t) => t.trim() === "2" ? "crypto" : "fiat" },
     { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b> (UUID):",
       skipIf: (d) => d.payoutType === "crypto" },
-    { key: "walletId", prompt: "Enter <b>walletId</b> (UUID):",
+    { key: "beneficiaryWalletId", prompt: "Enter <b>beneficiaryWalletId</b> (UUID):",
+      skipIf: (d) => d.payoutType === "fiat" },
+    { key: "currencyId", prompt: "Enter <b>currencyId</b> for token (UUID):\n<i>Use /currencies to find USDT/USDC IDs</i>",
       skipIf: (d) => d.payoutType === "fiat" },
     {
       key: "amount",
-      prompt: "Enter <b>amount</b> (net desired):\n<i>Or prefix with 'gross:' for grossAmount</i>",
+      prompt: "Enter <b>amount</b> (net desired):\n<i>Fiat: prefix 'gross:' for grossAmount</i>",
       execute: (sess, d) => {
-        const body = {};
-        if (d.payoutType === "crypto") body.walletId = d.walletId;
-        else body.bankAccountId = d.bankAccountId;
+        if (d.payoutType === "crypto") {
+          return api("POST", `/crypto-withdrawals/quote`, sess.apiKey, {
+            projectId: sess.projectId, beneficiaryWalletId: d.beneficiaryWalletId,
+            currencyId: d.currencyId, amount: d.amount });
+        }
+        const body = { bankAccountId: d.bankAccountId };
         if (d.amount.startsWith("gross:")) body.grossAmount = d.amount.slice(6);
         else body.amount = d.amount;
         return api("POST", `/projects/${sess.projectId}/payouts/quote`, sess.apiKey, body);
@@ -860,21 +865,26 @@ bot.onText(/\/create_payout/, (msg) => {
     { key: "beneficiaryId", prompt: "Enter <b>beneficiaryId</b> (UUID):" },
     { key: "bankAccountId", prompt: "Enter <b>bankAccountId</b> (UUID):",
       skipIf: (d) => d.payoutType === "crypto" },
-    { key: "walletId", prompt: "Enter <b>walletId</b> (UUID):",
+    { key: "beneficiaryWalletId", prompt: "Enter <b>beneficiaryWalletId</b> (UUID):",
+      skipIf: (d) => d.payoutType === "fiat" },
+    { key: "currencyId", prompt: "Enter <b>currencyId</b> for token (UUID):\n<i>Use /currencies to find USDT/USDC IDs</i>",
       skipIf: (d) => d.payoutType === "fiat" },
     { key: "amount", prompt: "Enter <b>amount</b> (net, human-readable):" },
     {
       key: "remarks",
       prompt: "Enter <b>remarks</b> (or 'skip'):",
       execute: (sess, d) => {
+        const key = `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        if (d.payoutType === "crypto") {
+          return api("POST", `/crypto-withdrawals`, sess.apiKey, {
+            projectId: sess.projectId, beneficiaryId: d.beneficiaryId,
+            beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId,
+            amount: d.amount, idempotencyKey: key });
+        }
         const body = {
-          projectId: sess.projectId,
-          beneficiaryId: d.beneficiaryId,
-          amount: d.amount,
-          idempotencyKey: `payout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          projectId: sess.projectId, beneficiaryId: d.beneficiaryId,
+          bankAccountId: d.bankAccountId, amount: d.amount, idempotencyKey: key,
         };
-        if (d.payoutType === "crypto") body.walletId = d.walletId;
-        else body.bankAccountId = d.bankAccountId;
         if (d.remarks !== "skip") body.remarks = d.remarks;
         return api("POST", `/projects/${sess.projectId}/payouts`, sess.apiKey, body);
       },
