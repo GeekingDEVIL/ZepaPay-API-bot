@@ -173,7 +173,6 @@ const pickers = {
     const benId = data.beneficiaryId;
     if (!benId || benId === "skip") return null;
     const res = await api("GET", `/projects/${s.projectId}/beneficiaries/${benId}/wallets`, s.apiKey);
-    console.log("benWallets API response:", JSON.stringify(res).slice(0, 500));
     if (!res.success) return null;
     const list = res.data.beneficiaryWallets || res.data.wallets || (Array.isArray(res.data) ? res.data : []);
     if (!list.length) return null;
@@ -944,6 +943,7 @@ async function handle(chatId, text) {
               const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
                 beneficiaryWalletId: d.beneficiaryWalletId, currencyId: d.currencyId,
                 amount: d.amount, idempotencyKey: key };
+              if (d.remarks !== "skip") body.remarks = d.remarks;
               return api("POST", `/projects/${s.projectId}/crypto-withdrawals`, s.apiKey, body);
             }
             const body = { projectId: s.projectId, beneficiaryId: d.beneficiaryId,
