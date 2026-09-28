@@ -175,10 +175,10 @@ const pickers = {
     const res = await api("GET", `/projects/${s.projectId}/beneficiaries/${benId}/wallets`, s.apiKey);
     console.log("benWallets API response:", JSON.stringify(res).slice(0, 500));
     if (!res.success) return null;
-    const list = res.data.wallets || res.data.walletAddresses || res.data["wallet-addresses"] || (Array.isArray(res.data) ? res.data : []);
+    const list = res.data.beneficiaryWallets || res.data.wallets || (Array.isArray(res.data) ? res.data : []);
     if (!list.length) return null;
     return list.map(w => ({
-      label: `${w.alias || w.address?.slice(0, 10) + "..." || w.id} — ${w.networkCode || w.network?.code || ""}`,
+      label: `${w.alias || w.address?.slice(0, 12) + "…" || w.id} — ${w.network?.code || w.networkId?.slice(0, 8) || ""}`,
       value: w.id,
     }));
   },
